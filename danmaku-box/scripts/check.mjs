@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 const steps = [
   { name: 'typecheck', cmd: ['node', 'node_modules/typescript/bin/tsc', '--noEmit'] },
   { name: 'lint', cmd: ['node', 'node_modules/eslint/bin/eslint.js', '.'] },
-  { name: 'test', cmd: ['node', '--test', 'tests/**/*.test.ts'] },
+  { name: 'test', cmd: ['node', '--test', 'tests/**/*.test.ts', 'src/**/*.test.ts'] },
   { name: 'build', cmd: ['node', 'scripts/build.mjs'] },
 ];
 
