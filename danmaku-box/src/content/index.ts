@@ -33,8 +33,7 @@ if (detected) {
     doc: document,
     getURL: (p) => chrome.runtime.getURL(p),
     session: {
-      get: (k) =>
-        chrome.storage.session.get(k).then((r) => r[k] as DrawerSessionState | undefined),
+      get: (k) => chrome.storage.session.get(k).then((r) => r[k] as DrawerSessionState | undefined),
       set: (items) => chrome.storage.session.set(items),
     },
   });

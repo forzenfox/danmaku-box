@@ -117,7 +117,9 @@ test('fullscreen 进入收起、退出恢复上次开合意图', () => {
   const listeners: Record<string, () => void> = {};
   const fakeWin = {
     document: { fullscreenElement: null as Element | null },
-    addEventListener: (t: string, fn: () => void) => { listeners[t] = fn; },
+    addEventListener: (t: string, fn: () => void) => {
+      listeners[t] = fn;
+    },
     removeEventListener: () => {},
   };
   const host = createDrawerHost({
