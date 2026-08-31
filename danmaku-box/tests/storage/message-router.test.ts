@@ -169,11 +169,12 @@ async function makeFillRouter(tab: TabContext) {
 const fillPayload = { content: '666冲冲冲', mode: 'replace' };
 
 describe('FILL_REQUEST 回填路由', () => {
-  it('活动标签页为已适配斗鱼直播间：下发 FILL_ACTION 并透传结果', async () => {
+  it('活动标签页为斗鱼直播间：即便快照为过期 adapter_down，仍实时下发 FILL_ACTION 并透传结果', async () => {
     const sent: Array<{ tabId: number; type: string; payload: Record<string, unknown> }> = [];
     const router = await makeFillRouter({
       getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
-      getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
+      // 快照 status 为过期的 adapter_down，不再阻断回填（C：判定实时化）
+      getTabSite: async () => ({ site: 'douyu', status: 'adapter_down' }),
       sendToTab: async (tabId, type, payload) => {
         sent.push({ tabId, type, payload });
         return { ok: true, truncated: false };
@@ -210,15 +211,34 @@ describe('FILL_REQUEST 回填路由', () => {
     assert.equal(r?.error?.code, ERROR_CODES.SITE_UNSUPPORTED);
   });
 
-  it('映射状态为 adapter_down 抛 ADAPTER_DOWN', async () => {
+  it('FILL_ACTION 执行实时判定输入框缺失（NO_INPUT）抛 ADAPTER_DOWN', async () => {
     const router = await makeFillRouter({
       getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
-      getTabSite: async () => ({ site: 'douyu', status: 'adapter_down' }),
-      sendToTab: async () => undefined,
+      // 快照为 ok，但实时执行时输入框缺失 → 实时判定为适配失效（C）
+      getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
+      sendToTab: async () => ({ ok: false, truncated: false, reason: 'NO_INPUT' }),
     });
     const r = await router.handleMessage(msg(MESSAGES.FILL_REQUEST, fillPayload));
     assert.equal(r?.ok, false);
     assert.equal(r?.error?.code, ERROR_CODES.ADAPTER_DOWN);
+  });
+
+  it('回填内容为空直接拒绝且不下发（INVALID_CONTENT）', async () => {
+    const sent: string[] = [];
+    const router = await makeFillRouter({
+      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
+      sendToTab: async (_tabId, type) => {
+        sent.push(type);
+        return { ok: true };
+      },
+    });
+    const r = await router.handleMessage(
+      msg(MESSAGES.FILL_REQUEST, { content: '', mode: 'replace' }),
+    );
+    assert.equal(r?.ok, false);
+    assert.equal(r?.error?.code, ERROR_CODES.INVALID_CONTENT);
+    assert.deepEqual(sent, [], '内容为空时不应下发 FILL_ACTION');
   });
 
   it('下发无回执（content script 未就绪）抛 DELIVERY_FAILED', async () => {
@@ -244,14 +264,41 @@ describe('FILL_REQUEST 回填路由', () => {
 });
 
 describe('GET_SITE_STATE 站点状态', () => {
-  it('返回活动标签页的站点与适配状态', async () => {
+  it('向 content 发送 PROBE_REQUEST 并返回实时适配状态', async () => {
+    const sent: Array<{ tabId: number; type: string }> = [];
+    const router = await makeFillRouter({
+      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      // 快照为过期 adapter_down，实时探测纠正为 ok
+      getTabSite: async () => ({ site: 'douyu', status: 'adapter_down' }),
+      sendToTab: async (tabId, type) => {
+        sent.push({ tabId, type });
+        return { site: 'douyu', status: 'ok' };
+      },
+    });
+    const r = await router.handleMessage(msg(MESSAGES.GET_SITE_STATE));
+    assert.equal(r?.ok, true);
+    assert.deepEqual(r?.data, { tabId: 7, site: 'douyu', status: 'ok' });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0]?.type, MESSAGES.PROBE_REQUEST);
+  });
+
+  it('实时探测为 adapter_down 时以实时结果为准', async () => {
+    const router = await makeFillRouter({
+      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
+      sendToTab: async () => ({ site: 'douyu', status: 'adapter_down' }),
+    });
+    const r = await router.handleMessage(msg(MESSAGES.GET_SITE_STATE));
+    assert.deepEqual(r?.data, { tabId: 7, site: 'douyu', status: 'adapter_down' });
+  });
+
+  it('content 未回包（未就绪）时回退会话快照状态', async () => {
     const router = await makeFillRouter({
       getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => undefined,
     });
     const r = await router.handleMessage(msg(MESSAGES.GET_SITE_STATE));
-    assert.equal(r?.ok, true);
     assert.deepEqual(r?.data, { tabId: 7, site: 'douyu', status: 'ok' });
   });
 

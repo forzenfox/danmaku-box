@@ -116,11 +116,21 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
     return list.find((item) => item.group_id === groupId && normalize(item.content) === n);
   }
 
-  // 初始化（幂等）：确保内置默认分组存在
+  // 初始化（幂等）：确保内置默认分组存在且 builtin 标记正确。
+  // builtin 标记是 getMenuContext 定位内置分组的唯一依据；历史/异常数据可能缺失
+  // 该字段（仅 id 存在），若不修复会导致右键菜单 READ_FAILED（2026-08 实测）。
   const existing = await loadGroups();
-  if (!existing.some((g) => g.id === DEFAULT_GROUP_ID)) {
+  const builtinIndex = existing.findIndex((g) => g.id === DEFAULT_GROUP_ID);
+  if (builtinIndex === -1) {
     const builtin: Group = { id: DEFAULT_GROUP_ID, name: '默认收藏', order: 0, builtin: true };
     await saveGroups([builtin, ...existing.map((g, i) => ({ ...g, order: i + 1 }))]);
+  } else {
+    const builtin = existing[builtinIndex] as Group;
+    if (!builtin.builtin) {
+      const repaired: Group = { ...builtin, builtin: true, name: builtin.name || '默认收藏' };
+      existing[builtinIndex] = repaired;
+      await saveGroups(existing);
+    }
   }
 
   async function requireGroupExists(groupId: string): Promise<void> {

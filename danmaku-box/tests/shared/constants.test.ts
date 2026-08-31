@@ -1,4 +1,4 @@
-﻿import { describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MESSAGES,
@@ -17,7 +17,7 @@ import {
 // 6.2 节实体约束、PRD V1.2 字段规则完全一致。
 
 describe('消息协议常量（技术方案 5.2）', () => {
-  it('包含全部 22 个消息名且值稳定', () => {
+  it('包含全部 23 个消息名且值稳定', () => {
     assert.deepStrictEqual(MESSAGES, {
       CS_READY: 'CS_READY',
       GET_MENU_CONTEXT: 'GET_MENU_CONTEXT',
@@ -35,6 +35,7 @@ describe('消息协议常量（技术方案 5.2）', () => {
       FILL_REQUEST: 'FILL_REQUEST',
       FILL_ACTION: 'FILL_ACTION',
       GET_SITE_STATE: 'GET_SITE_STATE',
+      PROBE_REQUEST: 'PROBE_REQUEST',
       GET_SETTINGS: 'GET_SETTINGS',
       SAVE_SETTINGS: 'SAVE_SETTINGS',
       EXPORT_BACKUP: 'EXPORT_BACKUP',

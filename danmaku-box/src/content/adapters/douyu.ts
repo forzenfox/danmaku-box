@@ -23,10 +23,15 @@ export function createDouyuAdapter(): SiteAdapter {
     site: 'douyu',
 
     probe(root: Document | HTMLElement): ProbeResult {
+      // A：回填仅依赖输入框（必需锚点）；弹幕列表随 WebSocket 首条消息延迟渲染
+      // （实测约 9s），列为可选锚点——缺失仅记录，不影响适配判定。
+      const input = root.querySelector(SELECTORS.input);
+      const list = root.querySelector(SELECTORS.list);
       const missing: string[] = [];
-      if (!root.querySelector(SELECTORS.input)) missing.push(SELECTORS.input);
-      if (!root.querySelector(SELECTORS.list)) missing.push(SELECTORS.list);
-      return { ok: missing.length === 0, missing };
+      if (!input) missing.push(SELECTORS.input);
+      if (!list) missing.push(SELECTORS.list);
+      // ok 只由必需锚点（输入框）决定；列表缺失不判适配失效
+      return { ok: input !== null, missing };
     },
 
     findDanmakuItem(target: Element): Element | null {

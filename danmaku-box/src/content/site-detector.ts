@@ -6,7 +6,7 @@ import type { SiteAdapter } from './adapters/types.ts';
 
 export interface DetectedSite {
   site: 'douyu' | 'douyin';
-  /** ok=核心锚点冒烟通过；adapter_down=整站适配失效（两级降级第一级） */
+  /** ok=必需锚点（输入框）冒烟通过；adapter_down=必需锚点缺失（A 起仅由输入框判定） */
   status: 'ok' | 'adapter_down';
   adapter: SiteAdapter;
 }

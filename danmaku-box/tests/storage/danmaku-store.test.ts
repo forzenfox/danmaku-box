@@ -58,6 +58,21 @@ describe('初始化', () => {
     assert.ok(area.store.has(STORAGE_KEYS.groups));
   });
 
+  it('默认分组存在但 builtin 标记缺失时初始化修复该标记', async () => {
+    const area = new MemoryArea();
+    // 模拟历史/异常数据：id 正确但 builtin 字段缺失
+    area.store.set(STORAGE_KEYS.groups, [{ id: DEFAULT_GROUP_ID, name: '默认收藏', order: 0 }]);
+    const storage = createStorageService(area);
+    const store = await createDanmakuStore(storage);
+    const groups = await store.getGroups();
+    const builtin = groups.find((g) => g.id === DEFAULT_GROUP_ID);
+    assert.equal(builtin?.builtin, true, '初始化应补全内置分组 builtin 标记');
+    // 修复后 getMenuContext 不应因内置分组缺失而抛 READ_FAILED
+    const menu = await store.getMenuContext('任意');
+    assert.ok(Array.isArray(menu));
+    assert.equal(menu[menu.length - 1]?.id, DEFAULT_GROUP_ID, '内置分组固定末位');
+  });
+
   it('重复创建不产生重复默认分组', async () => {
     const { storage } = await makeStore();
     await createDanmakuStore(storage);

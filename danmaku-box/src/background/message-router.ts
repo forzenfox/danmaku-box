@@ -48,7 +48,7 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     return next;
   }
 
-  /** 回填前置校验：活动标签页 → 站点映射 → 适配状态（技术方案 7.2 时序） */
+  /** 回填前置校验：活动标签页 → 站点映射（适配状态改为实时判定，见 FILL_REQUEST） */
   async function resolveFillTarget(): Promise<number> {
     const active = await tab.getActiveTab();
     if (!active) {
@@ -60,9 +60,6 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     }
     if (info.site !== 'douyu') {
       throw new StoreError(ERROR_CODES.SITE_UNSUPPORTED, '请在斗鱼直播间页面使用');
-    }
-    if (info.status !== 'ok') {
-      throw new StoreError(ERROR_CODES.ADAPTER_DOWN, '直播页已改版，回填暂不可用，请等待插件更新');
     }
     return active.tabId;
   }
@@ -105,16 +102,28 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     [MESSAGES.MOVE_DANMAKU]: (p) =>
       enqueueWrite(() => store.moveDanmaku(p.ids as string[], p.targetGroupId as string)),
     [MESSAGES.FILL_REQUEST]: async (p) => {
+      const content = p.content as string;
+      if (!content || !content.trim()) {
+        throw new StoreError(ERROR_CODES.INVALID_CONTENT, '弹幕内容为空');
+      }
       const tabId = await resolveFillTarget();
       const response = await tab.sendToTab(tabId, MESSAGES.FILL_ACTION, {
-        content: p.content as string,
+        content,
         mode: p.mode as 'replace' | 'append',
       });
       if (typeof response !== 'object' || response === null || !('ok' in response)) {
         void diagnostics?.log('fill', 'warn', `回填下发无回执（tab ${tabId}）`);
         throw new StoreError(ERROR_CODES.DELIVERY_FAILED, '直播页未就绪，请刷新后重试');
       }
-      const fillResult = response as { ok: boolean; truncated?: boolean };
+      const fillResult = response as { ok: boolean; truncated?: boolean; reason?: string };
+      // C：适配状态实时判定——FILL_ACTION 执行时输入框缺失（NO_INPUT）→ 适配失效
+      if (!fillResult.ok && fillResult.reason === 'NO_INPUT') {
+        void diagnostics?.log('fill', 'warn', `回填实时探测输入框缺失（tab ${tabId}）`);
+        throw new StoreError(
+          ERROR_CODES.ADAPTER_DOWN,
+          '直播页已改版，回填暂不可用，请等待插件更新',
+        );
+      }
       void diagnostics?.log(
         'fill',
         fillResult.ok ? 'info' : 'warn',
@@ -127,7 +136,18 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
       if (!active) return { tabId: null, site: null, status: 'no_active_tab' };
       const info = await tab.getTabSite(active.tabId);
       if (!info) return { tabId: active.tabId, site: null, status: 'unsupported' };
-      return { tabId: active.tabId, site: info.site, status: info.status };
+      // C：实时探测覆盖注入快照的滞后（如弹幕列表延迟渲染导致的过期 adapter_down）；
+      // content 未回包（未就绪）时回退会话快照状态。
+      let status = info.status;
+      const probe = await tab.sendToTab(active.tabId, MESSAGES.PROBE_REQUEST, {});
+      if (
+        typeof probe === 'object' &&
+        probe !== null &&
+        typeof (probe as { status?: unknown }).status === 'string'
+      ) {
+        status = (probe as { status: string }).status;
+      }
+      return { tabId: active.tabId, site: info.site, status };
     },
     [MESSAGES.GET_SETTINGS]: async () => ({ settings: await settings.get() }),
     [MESSAGES.SAVE_SETTINGS]: (p) =>
