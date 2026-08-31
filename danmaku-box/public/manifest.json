@@ -25,6 +25,12 @@
   "side_panel": {
     "default_path": "panel.html"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["panel.html", "panel.css", "panel.js"],
+      "matches": ["*://*.douyu.com/*"]
+    }
+  ],
   "options_ui": {
     "page": "settings.html",
     "open_in_tab": true
