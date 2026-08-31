@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>弹幕收藏夹</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="panel-header">
+        <h1>弹幕收藏夹</h1>
+        <div class="header-actions">
+          <button id="btn-batch" class="btn" type="button">批量管理</button>
+          <button id="btn-import" class="btn" type="button" title="从备份文件导入恢复">导入</button>
+          <button id="btn-export" class="btn" type="button" title="导出全部数据为 JSON 备份">
+            导出
+          </button>
+          <button id="btn-new-danmaku" class="btn btn-primary" type="button" title="手动新建弹幕">
+            ＋
+          </button>
+        </div>
+      </header>
+      <div class="toolbar">
+        <input id="search" class="search-input" type="search" placeholder="搜索弹幕内容…" />
+        <span id="count" class="count"></span>
+        <select id="sort" class="sort-select" title="排序方式">
+          <option value="latest">最新收藏</option>
+          <option value="oldest">最早收藏</option>
+          <option value="length">内容长度</option>
+        </select>
+      </div>
+      <div class="panel-main">
+        <nav id="group-nav" class="group-nav" aria-label="分组导航"></nav>
+        <div id="list-container" class="list-container"></div>
+      </div>
+      <div id="batch-bar" class="batch-bar hidden">
+        <span id="batch-count">已选 0 条</span>
+        <button id="btn-batch-move" class="btn" type="button">移动</button>
+        <button id="btn-batch-delete" class="btn btn-danger" type="button">删除</button>
+        <button id="btn-batch-exit" class="btn" type="button">退出批量</button>
+      </div>
+      <footer class="panel-footer">
+        <span id="usage">存储用量 —</span>
+        <span class="privacy">本地存储 · 不上传云端</span>
+      </footer>
+      <div id="toast-wrap" class="toast-wrap" aria-live="polite"></div>
+      <div id="modal-root"></div>
+    </div>
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

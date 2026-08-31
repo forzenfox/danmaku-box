@@ -1,0 +1,110 @@
+/* 设置页样式（原型设计 V0.2 3.5） */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
+  font-size: 14px;
+  color: #1f2329;
+  background: #f5f6f8;
+}
+
+.settings-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-page h1 {
+  font-size: 20px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 6%);
+}
+
+.card h2 {
+  font-size: 15px;
+  margin-bottom: 14px;
+}
+
+.field {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.field-label {
+  width: 96px;
+  flex-shrink: 0;
+  color: #4e5969;
+  font-size: 13px;
+  padding-top: 2px;
+}
+
+.field-value {
+  color: #1f2329;
+  font-size: 13px;
+}
+
+.field-hint {
+  color: #86909c;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 4px;
+  padding-left: 108px;
+}
+
+.radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: #1f2329;
+}
+
+.radio-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-left: 108px;
+}
+
+.danger-card {
+  border: 1px solid #ffe4ba;
+}
+
+@media (width <= 560px) {
+  .field {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .field-hint,
+  .actions {
+    padding-left: 0;
+  }
+}

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>设置 · 弹幕收藏夹</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <main class="settings-page">
+      <h1>设置</h1>
+
+      <section class="card">
+        <h2>回填配置</h2>
+        <div class="field">
+          <span class="field-label">回填模式</span>
+          <div class="radio-row" id="fill-mode">
+            <label><input type="radio" name="fillMode" value="replace" /> 替换（默认）</label>
+            <label><input type="radio" name="fillMode" value="append" /> 追加</label>
+          </div>
+          <p class="field-hint">
+            追加模式多次回填时以空格衔接输入框已有内容（站内拼接校验未实测，随 PRD Q2 决策）
+          </p>
+        </div>
+        <div class="field">
+          <span class="field-label">回填后行为</span>
+          <div class="radio-row" id="fill-behavior">
+            <label
+              ><input type="radio" name="fillAfterBehavior" value="focus_only" />
+              仅聚焦输入框（默认）</label
+            >
+            <label
+              ><input type="radio" name="fillAfterBehavior" value="focus_and_highlight" />
+              聚焦并高亮已填内容</label
+            >
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">聊天区右键收藏</span>
+          <div class="radio-row">
+            <label
+              ><input type="checkbox" id="chat-context-menu" />
+              在直播间聊天区右键弹幕弹出收藏菜单</label
+            >
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>数据管理</h2>
+        <div class="field">
+          <span class="field-label">存储位置</span>
+          <span class="field-value">本地（浏览器扩展存储）</span>
+        </div>
+        <div class="field">
+          <span class="field-label">当前用量</span>
+          <span class="field-value" id="usage">—</span>
+        </div>
+        <div class="actions">
+          <button id="btn-export" class="dk-btn dk-btn-primary" type="button">导出备份</button>
+          <button id="btn-import" class="dk-btn" type="button">导入恢复</button>
+          <button id="btn-diag" class="dk-btn" type="button">导出诊断信息</button>
+        </div>
+        <p class="field-hint">
+          导出为 JSON
+          文件，含全部弹幕、分组与设置；导入支持合并（跳过重复）与覆盖（替换前自动下载临时备份）。
+        </p>
+      </section>
+
+      <section class="card danger-card">
+        <h2>危险操作</h2>
+        <div class="actions">
+          <button id="btn-clear" class="dk-btn dk-btn-danger" type="button">清空全部数据</button>
+        </div>
+        <p class="field-hint">清空前会自动下载当前库的临时备份文件；执行后回到空库状态。</p>
+      </section>
+    </main>
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>

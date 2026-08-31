@@ -1,0 +1,492 @@
+/* 弹幕库面板样式（原型设计 V0.2 3.2：三区布局 + 批量栏 + toast + 模态） */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --border: #e5e6eb;
+  --text: #1f2329;
+  --text-secondary: #86909c;
+  --primary: #1652f0;
+  --primary-hover: #0e42cc;
+  --danger: #f53f3f;
+  --danger-bg: #ffece8;
+  --bg-hover: #f2f3f5;
+  --bg-active: #e8f0ff;
+  --warn: #ff7d00;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: #fff;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 顶部工具栏 ─────────────────────────────── */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.panel-header h1 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn:disabled {
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.count {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sort-select {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  background: #fff;
+}
+
+/* ── 主区：左列分组 + 右侧列表 ─────────────── */
+.panel-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.group-nav {
+  width: 150px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  border-left: 2px solid transparent;
+}
+
+.nav-item:hover {
+  background: var(--bg-hover);
+}
+
+.nav-item.active {
+  background: var(--bg-active);
+  border-left-color: var(--primary);
+}
+
+.nav-item .nav-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-item .nav-count {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.nav-item .nav-more {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 0 2px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.nav-item .nav-more:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.nav-item .star {
+  color: #f7ba1e;
+}
+
+.nav-new-group {
+  padding: 8px 12px;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.nav-new-group:hover {
+  background: var(--bg-hover);
+}
+
+.nav-input {
+  width: 100%;
+  margin: 2px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.list-container {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+
+/* ── 弹幕条目 ─────────────────────────────── */
+.danmaku-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.danmaku-item .item-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.danmaku-item .item-check {
+  margin-top: 2px;
+}
+
+.danmaku-item .item-content {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.danmaku-item .item-content.empty-content {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.danmaku-item .item-meta {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.danmaku-item .item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.item-actions .btn {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.edit-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+/* ── 批量操作栏 ───────────────────────────── */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: #fafbfc;
+  flex-shrink: 0;
+}
+
+.batch-bar.hidden {
+  display: none;
+}
+
+#batch-count {
+  flex: 1;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ── 底部 ────────────────────────────────── */
+.panel-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.panel-footer .usage-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* ── 空态 ────────────────────────────────── */
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.empty-state .empty-title {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.empty-state .empty-steps {
+  display: inline-block;
+  text-align: left;
+  line-height: 2;
+  margin-bottom: 16px;
+}
+
+.empty-state .btn {
+  margin-top: 4px;
+}
+
+/* ── toast（面板顶部右对齐，2 秒消失）───── */
+.toast-wrap {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+  font-size: 12px;
+  animation: toast-in 0.15s ease-out;
+}
+
+.toast.toast-success {
+  color: #00b42a;
+  border-color: #b7f0c5;
+}
+
+.toast.toast-warn {
+  color: var(--warn);
+  border-color: #ffe4ba;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── 模态与浮层 ───────────────────────────── */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 35%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 280px;
+  max-width: 90%;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+
+.modal h3 {
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.modal .modal-body {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+
+.modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal label {
+  display: block;
+  font-size: 12px;
+  margin: 8px 0 4px;
+}
+
+.modal input,
+.modal select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.modal input:focus,
+.modal select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* ── 分组 ⋮ 弹出菜单 ────────────────────── */
+.group-menu {
+  position: fixed;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 10%);
+  z-index: 300;
+  min-width: 96px;
+  padding: 4px 0;
+}
+
+.group-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.group-menu button:hover {
+  background: var(--bg-hover);
+}
+
+.group-menu button.menu-danger {
+  color: var(--danger);
+}
+
+.loading-hint {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 6px 0;
+}
