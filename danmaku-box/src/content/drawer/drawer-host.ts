@@ -1,0 +1,156 @@
+// danmaku-box/src/content/drawer/drawer-host.ts
+// 抽屉宿主 DrawerHost（spec 2026-08-31 §6）。
+// 职责：管理抽屉的"壳"——把手 + Shadow DOM 容器 + panel.html iframe。
+// 边界：不复制任何弹幕渲染逻辑；开关是页面内局部状态，不经 service worker。
+// 测试策略：依赖注入 doc/getURL/session，DOM 副作用留人工走查（spec §8）。
+
+/** 内嵌样式：Shadow DOM 隔离，把手/容器均页面无法触及 */
+export const DRAWER_STYLES = `
+  :host { all: initial; }
+  .drawer-host {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 720px;
+    max-width: min(90vw, 1440px);
+    z-index: 2147483647;
+    transform: translateX(105%);
+    transition: transform 0.25s ease;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+    background: #fff;
+  }
+  .drawer-host.open { transform: translateX(0); }
+  .drawer-host.side-left { right: auto; left: 0; transform: translateX(-105%); }
+  .drawer-host.side-left.open { transform: translateX(0); }
+  .drawer-iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .drawer-handle {
+    position: fixed;
+    top: 45%; right: 0;
+    width: 28px; height: 96px;
+    z-index: 2147483647;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(22, 82, 240, 0.92);
+    color: #fff; font-size: 14px; cursor: pointer;
+    border-radius: 8px 0 0 8px;
+    user-select: none;
+  }
+  .drawer-host.side-left ~ .drawer-handle { right: auto; left: 0; border-radius: 0 8px 8px 0; }
+  .drawer-cover { position: fixed; inset: 0; z-index: 2147483646; background: rgba(0,0,0,0.25); }
+`;
+
+export interface DrawerSessionState {
+  open?: boolean;
+  side?: 'left' | 'right';
+  width?: number;
+}
+
+export interface DrawerSessionLike {
+  get(key: string): Promise<DrawerSessionState | undefined>;
+  set(items: Record<string, DrawerSessionState>): Promise<void>;
+}
+
+export interface DrawerHostDeps {
+  /** 页面 document 注入（测试用 fake） */
+  doc: Document;
+  /** 组装 chrome-extension iframe src（测试注入桩） */
+  getURL: (path: string) => string;
+  /** 会话存储（null=不持久化）；默认生产态为 chrome.storage.session */
+  session: DrawerSessionLike | null;
+  /** 会话 key（可选，默认 'drawer.ui'） */
+  sessionKey?: string;
+}
+
+export interface DrawerHost {
+  mount(): void;
+  toggle(): void;
+  isOpen(): boolean;
+  dispose(): void;
+}
+
+const SESSION_KEY = 'drawer.ui';
+
+export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
+  const { doc, getURL, session, sessionKey = SESSION_KEY } = deps;
+  let open = false;
+  let mounted = false;
+  let root: HTMLElement | null = null;
+  let handleEl: HTMLElement | null = null;
+  let shadowHost: HTMLElement | null = null; // shadow 宿主（build 时备份，dispose 根除）
+
+  function applyOpen(force: boolean): void {
+    open = force;
+    root?.classList.toggle('open', open);
+  }
+
+  function build(): void {
+    // Shadow 宿主容器
+    const hostEl = doc.createElement('div');
+    shadowHost = hostEl; // 备份供 dispose 根除
+    const shadow = hostEl.attachShadow({ mode: 'closed' });
+    const style = doc.createElement('style');
+    style.textContent = DRAWER_STYLES;
+    const wrap = doc.createElement('div');
+    wrap.className = 'drawer-host';
+    const iframe = doc.createElement('iframe');
+    iframe.className = 'drawer-iframe';
+    iframe.setAttribute('src', getURL('panel.html'));
+    wrap.appendChild(iframe);
+
+    // 把手：同为 shadow 子树（fixed 定位仍相对页面视口，隔离于页面样式）
+    const handle = doc.createElement('div');
+    handle.className = 'drawer-handle';
+    handle.textContent = '▼';
+    handle.addEventListener('click', () => toggle());
+
+    shadow.appendChild(style);
+    shadow.appendChild(wrap);
+    shadow.appendChild(handle);
+    (doc.body as unknown as { appendChild(c: unknown): void }).appendChild(hostEl); // 仅在此处挂载一次
+
+    root = wrap;
+    handleEl = handle;
+
+    // 恢复会话状态（异步，不阻塞首帧）
+    if (session) {
+      void session.get(sessionKey).then((s) => {
+        if (s) {
+          if (s.side === 'left') root?.classList.add('side-left');
+          if (s.open) applyOpen(true);
+        }
+      });
+    }
+  }
+
+  function mount(): void {
+    if (mounted) return;
+    mounted = true;
+    build();
+  }
+
+  function toggle(): void {
+    applyOpen(!open);
+    if (session) {
+      void session
+        .set({
+          [sessionKey]: {
+            open,
+            side: root?.classList.contains('side-left') ? 'left' : 'right',
+          } satisfies DrawerSessionState,
+        })
+        .catch(() => {});
+    }
+  }
+
+  function dispose(): void {
+    shadowHost?.remove(); // shadow 宿主（子树随宿主一并移除）
+    root?.remove();
+    handleEl?.remove();
+    root = null;
+    handleEl = null;
+    shadowHost = null;
+    mounted = false;
+  }
+
+  return { mount, toggle, isOpen: () => open, dispose };
+}
