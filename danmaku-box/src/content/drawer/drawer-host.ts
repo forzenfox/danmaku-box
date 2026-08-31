@@ -59,6 +59,8 @@ export interface DrawerHostDeps {
   session: DrawerSessionLike | null;
   /** 会话 key（可选，默认 'drawer.ui'） */
   sessionKey?: string;
+  /** 视口/全屏事件源（测试注入，默认 window；测试环境为 null 时跳过监听） */
+  win?: Window;
 }
 
 export interface DrawerHost {
@@ -73,15 +75,35 @@ const SESSION_KEY = 'drawer.ui';
 export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
   const { doc, getURL, session, sessionKey = SESSION_KEY } = deps;
   let open = false;
+  // lastOpen：用户最近一次显式 toggle 的开合意图（全屏过渡期间保留）
+  let lastOpen = false;
   let mounted = false;
   let root: HTMLElement | null = null;
-  let handleEl: HTMLElement | null = null;
   let shadowHost: HTMLElement | null = null; // shadow 宿主（build 时备份，dispose 根除）
+  const view = deps.win ?? (typeof window !== 'undefined' ? window : null);
 
   function applyOpen(force: boolean): void {
     open = force;
     root?.classList.toggle('open', open);
   }
+
+  function persist(): void {
+    if (!session) return;
+    void session
+      .set({
+        [sessionKey]: {
+          open,
+          side: root?.classList.contains('side-left') ? 'left' : 'right',
+        } satisfies DrawerSessionState,
+      })
+      .catch(() => {});
+  }
+
+  // 全屏：进入→收起（不动 lastOpen）；退出→恢复 lastOpen
+  const onFullscreen = () => {
+    if (!view) return;
+    applyOpen(view.document.fullscreenElement ? false : lastOpen);
+  };
 
   function build(): void {
     // Shadow 宿主容器
@@ -109,14 +131,16 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
     (doc.body as unknown as { appendChild(c: unknown): void }).appendChild(hostEl); // 仅在此处挂载一次
 
     root = wrap;
-    handleEl = handle;
 
     // 恢复会话状态（异步，不阻塞首帧）
     if (session) {
       void session.get(sessionKey).then((s) => {
         if (s) {
           if (s.side === 'left') root?.classList.add('side-left');
-          if (s.open) applyOpen(true);
+          if (s.open) {
+            lastOpen = true; // 会话恢复即显式意图，供全屏退出恢复
+            applyOpen(true);
+          }
         }
       });
     }
@@ -126,28 +150,19 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
     if (mounted) return;
     mounted = true;
     build();
+    view?.addEventListener('fullscreenchange', onFullscreen);
   }
 
   function toggle(): void {
-    applyOpen(!open);
-    if (session) {
-      void session
-        .set({
-          [sessionKey]: {
-            open,
-            side: root?.classList.contains('side-left') ? 'left' : 'right',
-          } satisfies DrawerSessionState,
-        })
-        .catch(() => {});
-    }
+    lastOpen = !open; // 记录用户显式意图
+    applyOpen(lastOpen);
+    persist();
   }
 
   function dispose(): void {
+    view?.removeEventListener('fullscreenchange', onFullscreen);
     shadowHost?.remove(); // shadow 宿主（子树随宿主一并移除）
-    root?.remove();
-    handleEl?.remove();
     root = null;
-    handleEl = null;
     shadowHost = null;
     mounted = false;
   }

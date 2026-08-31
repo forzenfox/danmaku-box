@@ -111,3 +111,45 @@ test('DRAWER_STYLES 含关键选择器', () => {
   assert.match(DRAWER_STYLES, /\.drawer-iframe/);
   assert.match(DRAWER_STYLES, /\.drawer-handle/);
 });
+
+test('fullscreen 进入收起、退出恢复上次开合意图', () => {
+  const { doc } = makeFakeDoc();
+  const listeners: Record<string, () => void> = {};
+  const fakeWin = {
+    document: { fullscreenElement: null as Element | null },
+    addEventListener: (t: string, fn: () => void) => { listeners[t] = fn; },
+    removeEventListener: () => {},
+  };
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session: null,
+    win: fakeWin as unknown as Window,
+  });
+  host.mount();
+  host.toggle(); // 用户打开 → open/lastOpen=true
+  assert.equal(host.isOpen(), true);
+  const onFullscreenChange = listeners['fullscreenchange'];
+  assert.ok(onFullscreenChange, 'mount 后应注册 fullscreenchange 监听');
+  fakeWin.document.fullscreenElement = {} as Element;
+  onFullscreenChange(); // 进入全屏 → 收起
+  assert.equal(host.isOpen(), false);
+  fakeWin.document.fullscreenElement = null;
+  onFullscreenChange(); // 退出全屏 → 恢复 lastOpen=true
+  assert.equal(host.isOpen(), true);
+});
+
+test('dispose 移除 Shadow 宿主节点', () => {
+  const { doc, created } = makeFakeDoc();
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session: null,
+  });
+  host.mount();
+  const hostDiv = created.find((e) => e.tag === 'div'); // 首个 div 即 Shadow 宿主（记录内不可变性由 fake 保证）
+  assert.ok(hostDiv, 'mount 后应先有宿主节点');
+  host.dispose();
+  assert.equal(host.isOpen(), false);
+  assert.equal(hostDiv.removed, true, 'Shadow 宿主被移除（子树随之移除）');
+});
