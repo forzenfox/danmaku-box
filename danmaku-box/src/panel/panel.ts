@@ -9,9 +9,11 @@ import {
   DEFAULT_GROUP_ID,
   GROUP_NAME_MAX_LENGTH,
   MESSAGES,
+  STORAGE_KEYS,
 } from '../shared/constants.ts';
 import { sendMessage } from '../shared/messaging.ts';
 import { exportBackupToFile, importBackupFromFile } from '../shared/backup-ui.ts';
+import { createStorageWatcher } from './storage-watcher.ts';
 import type { Danmaku, Group } from '../shared/types.ts';
 
 interface GroupWithCount extends Group {
@@ -520,8 +522,8 @@ async function createGroup(rawName: string): Promise<void> {
     await loadGroups();
     state.selectedGroupId = r.data.group.id;
     renderNav();
-    await loadList();
     void persistSelectedGroup();
+    // 列表刷新由存储变更监听统一驱动（保留当前分组/筛选状态）
   } else {
     toast(errorText(r.error?.code, '创建失败'), 'warn');
     renderNav();
@@ -553,8 +555,8 @@ async function deleteGroup(g: GroupWithCount): Promise<void> {
     toast(`已删除分组，${r.data.movedCount} 条弹幕移入「默认收藏」`);
     if (state.selectedGroupId === g.id) state.selectedGroupId = null;
     await loadGroups();
-    await loadList();
     void persistSelectedGroup();
+    // 列表刷新由存储变更监听统一驱动
   } else {
     toast(errorText(r.error?.code, '删除失败'), 'warn');
   }
@@ -566,7 +568,7 @@ async function updateDanmaku(id: string, content: string): Promise<void> {
   if (r.ok) {
     toast('已保存');
     await loadGroups();
-    await loadList();
+    // 列表刷新由存储变更监听统一驱动
   } else {
     toast(errorText(r.error?.code, '保存失败'), 'warn');
     renderList();
@@ -581,7 +583,7 @@ async function deleteDanmaku(ids: string[]): Promise<void> {
     state.checked.clear();
     if (state.batchMode) exitBatch();
     await loadGroups();
-    await loadList();
+    // 列表刷新由存储变更监听统一驱动
   } else {
     toast(errorText(r.error?.code, '删除失败'), 'warn');
     renderList();
@@ -600,7 +602,7 @@ async function moveDanmaku(ids: string[]): Promise<void> {
     state.checked.clear();
     if (state.batchMode) exitBatch();
     await loadGroups();
-    await loadList();
+    // 列表刷新由存储变更监听统一驱动
   } else {
     toast(errorText(r.error?.code, '移动失败'), 'warn');
   }
@@ -801,7 +803,7 @@ function showNewDanmakuModal(): void {
         toast('已收藏');
       }
       await loadGroups();
-      await loadList();
+      // 列表刷新由存储变更监听统一驱动
     } else {
       toast(errorText(r.error?.code, '收藏失败'), 'warn');
     }
@@ -888,8 +890,8 @@ importInput.addEventListener('change', async () => {
   if (!file) return;
   if (await importBackupFromFile(file)) {
     await loadGroups();
-    await loadList();
     void renderUsage();
+    // 列表刷新由存储变更监听统一驱动（IMPORT 已写入 db.danmaku/db.groups）
     toast('导入完成，列表已刷新');
   }
 });
@@ -900,6 +902,22 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── 启动 ─────────────────────────────────────
+// 存储变更监听：content script 右键收藏等外部写入触发列表自动刷新（保留筛选条件）。
+// 面板自身增删改后不主动 loadList，统一由此驱动，避免重复加载。
+const storageWatcher = createStorageWatcher({
+  subscribe(fn) {
+    chrome.storage.onChanged.addListener(fn);
+    return () => chrome.storage.onChanged.removeListener(fn);
+  },
+  keys: [STORAGE_KEYS.danmaku, STORAGE_KEYS.groups],
+  async onChange() {
+    // 保留分组/关键词/排序/页码状态，仅重拉数据（技术方案 V0.2 5.2）
+    await loadGroups();
+    await loadList();
+  },
+});
+storageWatcher.mount();
+
 async function init(): Promise<void> {
   void sendMessage(MESSAGES.PANEL_OPENED);
   // 面板打开即预查站点状态：非直播间/适配失效时「回填」预先置灰（原型 3.4.1）

@@ -317,6 +317,7 @@ flowchart TB
 | `FILL_REQUEST` | panel→background | `{content, mode}` | `{ok, truncated, reason}` | `NO_ACTIVE_TAB`、`SITE_UNSUPPORTED`、`ADAPTER_DOWN`、`NOT_LOGGED_IN`、`NO_INPUT` |
 | `FILL_ACTION` | background→content | `{content, mode}` | `{ok, truncated, reason}` | 同上（回执给 background 再回 panel） |
 | `GET_SITE_STATE` | panel→background | `{}` | `{tabId, site, status, reason}` | `NO_ACTIVE_TAB` |
+| `PROBE_REQUEST` | background→content | `{}` | `{site, status}` | — |
 | `GET_SETTINGS` | panel→background | `{}` | `{settings}` | — |
 | `SAVE_SETTINGS` | panel→background | `{patch}` | `{}` | `WRITE_FAILED` |
 | `EXPORT_BACKUP` | panel→background | `{}` | `{backup}` | `READ_FAILED` |
@@ -325,13 +326,15 @@ flowchart TB
 | `PANEL_OPENED/CLOSED` | panel→background | `{}` | `{}` | — |
 
 **契约要点**：
-- `FILL_REQUEST` 由 background 查询当前活动标签页（`tabs.query({active, lastFocusedWindow})`），按 `CS_READY` 维护的 `tabId→site` 映射校验站点，再经 `chrome.tabs.sendMessage` 下发 `FILL_ACTION`，content script 执行后将结果原路回执 [Expert judgment]。
+- `FILL_REQUEST` 由 background 查询当前活动标签页（`tabs.query({active, lastFocusedWindow})`），按 `CS_READY` 维护的 `tabId→site` 映射校验站点，再经 `chrome.tabs.sendMessage` 下发 `FILL_ACTION`，content script 执行后将结果原路回执 [Expert judgment]。适配状态采用**实时判定**：不依赖注入时快照 status，而以 `FILL_ACTION` 执行回执为准——输入框缺失（`reason=NO_INPUT`）映射 `ADAPTER_DOWN`（解决斗鱼弹幕列表延迟渲染导致的过期误判，见 8.2/9.6）。
+- `GET_SITE_STATE` 面板打开时经 `PROBE_REQUEST` 向 content 实时探测当前 DOM 的适配状态，覆盖注入快照的滞后（如弹幕列表延迟渲染导致的过期 `adapter_down`）；content 未回包（未就绪）时回退会话快照状态。
 - `GET_MENU_CONTEXT` 为右键菜单渲染的数据来源：content script 捕获 `contextmenu` 后调用，一次取全"分组列表（含 last_used_at 排序）+ 该弹幕内容的已收藏标记（hasThisContent）"，菜单按返回数据渲染，服务 PRD FR-01"最近使用排序"与"已收藏标记"两项交互 [Data-backed: PRD FR-01]。空文本/超长弹幕的置灰判定在 content script 本地完成（不依赖此消息）。
 - `FILL_ACTION` 下发失败（content script 未就绪、已卸载、tab 已关闭）返回 `DELIVERY_FAILED`，面板提示"直播页未就绪，请刷新后重试" [Expert judgment]。
 - 重复语义统一：右键收藏与手动新建的重复判定均为"返回字段 duplicate=true（不视为错误）"；错误码 `DUPLICATE` 从 `CREATE_DANMAKU` 中移除，两入口行为一致。
 - 写操作串行化机制：service worker 内维护 Promise 链式队列，所有写消息（COLLECT/CREATE/UPDATE/DELETE/MOVE/REORDER/IMPORT/SAVE_SETTINGS）入队后顺序执行，避免多面板窗口并发写相互覆盖 [Expert judgment]。
 - SW 内存态持久化：`CS_READY` 维护的 `tabId→site` 映射与分组快照缓存写入 `chrome.storage.session`（随浏览器会话存续，SW 回收重启后自动恢复读取，不落磁盘）；SW 冷启动时若无映射（浏览器整体重启），由 `tabs.query` + 各已打开 tab 的 content script 重新上报 `CS_READY` 重建 [Expert judgment]。
 - 错误码统一为稳定字符串，UI 侧映射为中文提示，不含堆栈细节，避免向页面上下文泄露内部信息。
+- **存储变更驱动刷新**：面板监听 `chrome.storage.onChanged`（仅 local 区 + 本插件 key `db.danmaku`/`db.groups`，防抖 150ms 合并），content script 右键收藏等外部写入后自动刷新当前分组列表与分组计数，且保留用户的分组/关键词/排序状态。面板自身增删改后不再主动 `loadList`，统一由此驱动，避免重复加载（仅 `loadGroups` 即时更新分组 UI）[Data-backed: 2026-08 实测右键收藏后列表不自动刷新]。`selectAndLoad`（切换分组）等用户交互路径仍主动加载。
 
 ### 5.3 导入导出 JSON 文件格式 Schema
 
@@ -615,7 +618,7 @@ interface SiteAdapter {
 | 飘屏暂停/恢复 | 飘屏元素类名易变（`.danmu-e7f029`→`.danmu-fbb2a3` 已变更 [Data-backed]），不做硬依赖：用 `[class*="danmu"]` 特征探测定位飘屏容器，通过注入 `animation-play-state: paused` 样式类暂停全部飘屏，右键完成或菜单关闭后移除该类恢复 |
 | 输入框双形态兼容 | `locateInput()` 先查 `.ChatSend-txt`，判断形态：若 `contenteditable=true` 走 DIV 分支（`innerText` 赋值 + `input` 事件），否则走 textarea 分支（原型 setter + `input` 事件）；当前线上为 DIV 形态，双分支保留以兼容历史版本 [Data-backed: 实地验证确认当前为 DIV 形态，selector-dict 记录双形态] |
 | 原生右键面板共存 | 自定义菜单在原生面板出现位置偏移展示（Q1 待登录态复测后定版，见第 10 章开放问题承接） |
-| 冒烟检测 | 实例化前检测 `.ChatSend-txt` 与 `.Barrage-list` 存在性（selector-dict 策略要点 [Data-backed]） |
+| 冒烟检测 | 实例化前检测 `.ChatSend-txt`（**必需锚点**，回填仅依赖输入框）；`.Barrage-list` 为**可选锚点**——随 WebSocket 首条消息延迟渲染（实测约 9s），缺失仅记录 `missing`、不判定适配失效 [Data-backed: 实地验证 + 2026-08 修复] |
 
 ### 8.3 抖音适配器 DouyinAdapter（二期）
 
@@ -699,7 +702,7 @@ interface SiteAdapter {
 
 | 级别 | 情形 | 行为 |
 |------|------|------|
-| 整站适配失效 | 进入直播间后冒烟探测失败（核心锚点缺失） | 明确状态提示（"斗鱼适配暂不可用，等待插件更新"），回填置灰并给兜底（复制文本），不静默 [Data-backed: PRD FR-06 降级两级原则] |
+| 整站适配失效 | 回填时实时判定：必需锚点（输入框）缺失（`FILL_ACTION` 回执 `reason=NO_INPUT` 或 `PROBE_REQUEST` 探测失败） | 明确状态提示（"斗鱼适配暂不可用，等待插件更新"），回填置灰并给兜底（复制文本），不静默 [Data-backed: PRD FR-06 降级两级原则]。判定实时化：不依赖注入时快照，避免弹幕列表延迟渲染导致的过期误判（见 8.2） |
 | 局部能力缺失 | 弹幕位于 iframe 内右键不可用、飘屏定位失败、抖音未登录 | 该入口置灰或静默跳过，不影响其余功能与观看 [Data-backed: PRD FR-06] |
 
 所有模块错误经统一错误码返回 UI，UI 映射为中文提示；单模块异常不向上抛未捕获错误，避免拖垮页面与面板（PRD 第 7 章稳定性）。
