@@ -38,14 +38,14 @@ npm run build
 
 ## 常用命令
 
-| 命令 | 说明 |
-| --- | --- |
-| `npm run check` | 完整检查：typecheck → lint → test → build，任一失败即中止 |
-| `npm run typecheck` | TypeScript 类型检查（tsc --noEmit） |
-| `npm run lint` | ESLint 全量检查 |
-| `npm run test` | 运行全部单元测试（node:test） |
-| `npm run build` | esbuild 构建产物到 dist/ |
-| `npm run format` | Prettier 全量格式化（提交前建议执行） |
+| 命令                | 说明                                                      |
+| ------------------- | --------------------------------------------------------- |
+| `npm run check`     | 完整检查：typecheck → lint → test → build，任一失败即中止 |
+| `npm run typecheck` | TypeScript 类型检查（tsc --noEmit）                       |
+| `npm run lint`      | ESLint 全量检查                                           |
+| `npm run test`      | 运行全部单元测试（node:test）                             |
+| `npm run build`     | esbuild 构建产物到 dist/                                  |
+| `npm run format`    | Prettier 全量格式化（提交前建议执行）                     |
 
 开发常用流程：先 `npm test` 跑单测，再 `npm run check` 做完整门禁；每次修改后建议运行 `npm run format` 保持格式统一。
 
