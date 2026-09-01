@@ -187,3 +187,81 @@ test('hide() 收起并写回会话关闭态', async () => {
   await Promise.resolve();
   assert.equal(saved!['drawer.ui']!.open, false);
 });
+
+test('hide() 幂等：toggle 开->hide->再 hide 不报错且 isOpen() 保持 false', () => {
+  const { doc } = makeFakeDoc();
+  const host = createDrawerHost({ doc, getURL: () => '', session: null });
+  host.mount();
+  host.toggle();
+  assert.equal(host.isOpen(), true);
+  host.hide();
+  assert.equal(host.isOpen(), false);
+  assert.doesNotThrow(() => host.hide());
+  assert.equal(host.isOpen(), false);
+});
+
+test('hide() 不动 lastOpen，全屏进入仍收起、退出恢复显式意图', () => {
+  const { doc } = makeFakeDoc();
+  const listeners: Record<string, () => void> = {};
+  const fakeWin = {
+    document: { fullscreenElement: null as Element | null },
+    addEventListener: (t: string, fn: () => void) => {
+      listeners[t] = fn;
+    },
+    removeEventListener: () => {},
+  };
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session: null,
+    win: fakeWin as unknown as Window,
+  });
+  host.mount();
+  host.toggle(); // 用户打开 -> lastOpen=true
+  host.hide(); // 程序化收起 -> open=false，但不改 lastOpen
+  assert.equal(host.isOpen(), false);
+  const onFullscreenChange = listeners['fullscreenchange'];
+  assert.ok(onFullscreenChange, 'mount 后应注册 fullscreenchange 监听');
+  fakeWin.document.fullscreenElement = {} as Element;
+  onFullscreenChange(); // 进入全屏 -> 保持收起
+  assert.equal(host.isOpen(), false);
+  fakeWin.document.fullscreenElement = null;
+  onFullscreenChange(); // 退出全屏 -> 恢复显式意图 open=true
+  assert.equal(host.isOpen(), true);
+});
+
+test('退出全屏恢复打开时会话同步写回 open:true', async () => {
+  const { doc } = makeFakeDoc();
+  const listeners: Record<string, () => void> = {};
+  const fakeWin = {
+    document: { fullscreenElement: null as Element | null },
+    addEventListener: (t: string, fn: () => void) => {
+      listeners[t] = fn;
+    },
+    removeEventListener: () => {},
+  };
+  let saved: Record<string, DrawerSessionState> | null = null;
+  const session = {
+    get: async () => undefined,
+    set: async (items: Record<string, DrawerSessionState>) => {
+      saved = items;
+    },
+  };
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session,
+    win: fakeWin as unknown as Window,
+  });
+  host.mount();
+  host.toggle(); // lastOpen=true
+  host.hide(); // 会话写回 open:false
+  assert.equal(saved!['drawer.ui']!.open, false);
+  const onFullscreenChange = listeners['fullscreenchange'];
+  assert.ok(onFullscreenChange, 'mount 后应注册 fullscreenchange 监听');
+  fakeWin.document.fullscreenElement = null; // 已退出全屏，触发恢复打开
+  onFullscreenChange();
+  await Promise.resolve(); // 等 persist 落库（session.set 真异步）
+  assert.equal(host.isOpen(), true);
+  assert.equal(saved!['drawer.ui']!.open, true, '会话态应跟随内存态写回 open:true');
+});

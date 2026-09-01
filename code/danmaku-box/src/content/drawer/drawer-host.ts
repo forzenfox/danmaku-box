@@ -104,6 +104,8 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
   const onFullscreen = () => {
     if (!view) return;
     applyOpen(view.document.fullscreenElement ? false : lastOpen);
+    // 退出全屏恢复为打开（lastOpen=true）时，同步会话态于内存态，消除歧见（R1）
+    if (!view.document.fullscreenElement && lastOpen) persist();
   };
 
   function build(): void {
