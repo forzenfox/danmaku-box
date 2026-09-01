@@ -50,12 +50,18 @@ if (detected) {
           ? ((message as { payload?: { content?: string; mode?: 'replace' | 'append' } }).payload ??
             {})
           : {};
-      sendResponse(
-        fillEngine.handleFillAction({
-          content: String(payload.content ?? ''),
-          mode: payload.mode === 'append' ? 'append' : 'replace',
-        }),
-      );
+      const result = fillEngine.handleFillAction({
+        content: String(payload.content ?? ''),
+        mode: payload.mode === 'append' ? 'append' : 'replace',
+      });
+      sendResponse(result);
+      // Task 4：回填成功后约 0.9s 自动收起抽屉（延迟让抽屉内 toast「已回填」先展示，
+      // 收起后输入框露出可直接发送——聚焦由 fill-engine 现有逻辑完成）。失败路径
+      // （result.ok !== true）不收起，用户需看到错误提示。900ms 为既定值（spec §5.3），
+      // 不抽成可配置项（YAGNI）。
+      if (result.ok) {
+        setTimeout(() => drawer.hide(), 900);
+      }
     } else if (type === MESSAGES.PROBE_REQUEST) {
       // 实时探测（C）：service worker 查询当前 DOM 的适配状态，
       // 覆盖注入时一次性快照的滞后（如弹幕列表延迟渲染导致的过期 adapter_down）。
