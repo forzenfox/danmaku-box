@@ -10,10 +10,10 @@ export const DRAWER_STYLES = `
   .drawer-host {
     position: fixed;
     top: 0;
-    bottom: 0;
     right: 0;
-    width: 720px;
-    max-width: min(90vw, 1440px);
+    height: min(62vh, 560px);
+    width: min(720px, 40vw);
+    max-width: 720px;
     z-index: 2147483647;
     transform: translateX(105%);
     transition: transform 0.25s ease;
@@ -158,6 +158,7 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
     applyOpen(lastOpen);
     persist();
   }
+
 
   function dispose(): void {
     view?.removeEventListener('fullscreenchange', onFullscreen);

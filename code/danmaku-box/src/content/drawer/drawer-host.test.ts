@@ -14,7 +14,7 @@ function makeFakeDoc() {
       children: [] as unknown[],
       removed: false,
       style: {},
-      classList: { toggle() {}, add() {}, remove() {} },
+      classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
       appendChild(c: unknown) {
         this.children.push(c);
         return c;
@@ -56,7 +56,7 @@ interface FakeEl {
   children: unknown[];
   removed: boolean;
   style: Record<string, never>;
-  classList: { toggle(): void; add(): void; remove(): void };
+  classList: { toggle(): void; add(): void; remove(): void; contains(): boolean };
   appendChild(c: unknown): unknown;
   setAttribute(k: string, v: string): void;
   getAttribute(k: string): string | null;
@@ -155,3 +155,10 @@ test('dispose 移除 Shadow 宿主节点', () => {
   assert.equal(host.isOpen(), false);
   assert.equal(hostDiv.removed, true, 'Shadow 宿主被移除（子树随之移除）');
 });
+
+test('DRAWER_STYLES 含 V2 布局参数（非全高 + 响应式宽度）', () => {
+  assert.match(DRAWER_STYLES, /height: min\(62vh, 560px\)/);
+  assert.match(DRAWER_STYLES, /width: min\(720px, 40vw\)/);
+  assert.ok(!/bottom\s*:\s*0\s*;/.test(DRAWER_STYLES), '不得再全高贴底 bottom: 0');
+});
+
