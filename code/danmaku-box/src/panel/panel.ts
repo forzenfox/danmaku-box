@@ -44,7 +44,6 @@ const state = {
   batchMode: false,
   checked: new Set<string>(),
   editingId: null as string | null,
-  deletingId: null as string | null,
   renamingGroupId: null as string | null,
   creatingGroup: false,
   fillMode: 'replace' as 'replace' | 'append',
@@ -397,22 +396,11 @@ function renderItem(item: Danmaku): HTMLElement {
     return row;
   }
 
-  const actions = h('div', 'item-actions');
+  // 常态（非批量）行内仅保留回填/编辑；移动/删除并入底部批量栏（spec §5.2）。
+  // 批量模式行内不渲染任何按钮，仅勾选框 + 内容。
+  if (!state.batchMode) {
+    const actions = h('div', 'item-actions');
 
-  // 删除行内确认态（Q3：行内确认 + 立即删除，不设撤销）
-  if (state.deletingId === item.id) {
-    const yes = h('button', 'btn btn-danger', '确认删除');
-    yes.type = 'button';
-    yes.addEventListener('click', () => void deleteDanmaku([item.id]));
-    const no = h('button', 'btn', '取消');
-    no.type = 'button';
-    no.addEventListener('click', () => {
-      state.deletingId = null;
-      renderList();
-    });
-    actions.appendChild(yes);
-    actions.appendChild(no);
-  } else {
     const fill = h('button', 'btn', '回填');
     fill.type = 'button';
     if (item.content === '') {
@@ -428,30 +416,16 @@ function renderItem(item: Danmaku): HTMLElement {
     fill.addEventListener('click', () => void fillDanmaku(item));
     actions.appendChild(fill);
 
-    if (!state.batchMode) {
-      const move = h('button', 'btn', '移动');
-      move.type = 'button';
-      move.addEventListener('click', () => void moveDanmaku([item.id]));
-      actions.appendChild(move);
+    const edit = h('button', 'btn', '编辑');
+    edit.type = 'button';
+    edit.addEventListener('click', () => {
+      state.editingId = item.id;
+      renderList();
+    });
+    actions.appendChild(edit);
 
-      const edit = h('button', 'btn', '编辑');
-      edit.type = 'button';
-      edit.addEventListener('click', () => {
-        state.editingId = item.id;
-        renderList();
-      });
-      actions.appendChild(edit);
-
-      const del = h('button', 'btn', '删除');
-      del.type = 'button';
-      del.addEventListener('click', () => {
-        state.deletingId = item.id;
-        renderList();
-      });
-      actions.appendChild(del);
-    }
+    main.appendChild(actions);
   }
-  main.appendChild(actions);
   row.appendChild(main);
 
   const meta = h('div', 'item-meta');
@@ -507,7 +481,6 @@ function renderAll(): void {
 // ── 领域操作 ─────────────────────────────────
 async function selectAndLoad(): Promise<void> {
   state.editingId = null;
-  state.deletingId = null;
   if (state.batchMode) exitBatch();
   renderAll();
   void persistSelectedGroup();
@@ -576,7 +549,6 @@ async function updateDanmaku(id: string, content: string): Promise<void> {
 }
 
 async function deleteDanmaku(ids: string[]): Promise<void> {
-  state.deletingId = null;
   const r = await sendMessage<{ deleted: number }>(MESSAGES.DELETE_DANMAKU, { ids });
   if (r.ok && r.data) {
     toast(`已删除 ${r.data.deleted} 条`);
