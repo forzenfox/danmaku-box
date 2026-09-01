@@ -1,7 +1,7 @@
 // danmaku-box/src/content/drawer/drawer-host.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDrawerHost, DRAWER_STYLES } from './drawer-host.ts';
+import { createDrawerHost, DRAWER_STYLES, type DrawerSessionState } from './drawer-host.ts';
 
 /** fake 宿主：最小 DOM 桩（memory-area 同款思路）。createElement 记录顺序；元素带 remove/removed 标记供 dispose 断言 */
 function makeFakeDoc() {
@@ -14,7 +14,14 @@ function makeFakeDoc() {
       children: [] as unknown[],
       removed: false,
       style: {},
-      classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+      classList: {
+        toggle() {},
+        add() {},
+        remove() {},
+        contains() {
+          return false;
+        },
+      },
       appendChild(c: unknown) {
         this.children.push(c);
         return c;
@@ -162,3 +169,21 @@ test('DRAWER_STYLES 含 V2 布局参数（非全高 + 响应式宽度）', () =>
   assert.ok(!/bottom\s*:\s*0\s*;/.test(DRAWER_STYLES), '不得再全高贴底 bottom: 0');
 });
 
+test('hide() 收起并写回会话关闭态', async () => {
+  const { doc } = makeFakeDoc();
+  let saved: Record<string, DrawerSessionState> | null = null;
+  const session = {
+    get: async () => undefined,
+    set: async (items: Record<string, DrawerSessionState>) => {
+      saved = items;
+    },
+  };
+  const host = createDrawerHost({ doc, getURL: () => '', session });
+  host.mount();
+  host.toggle();
+  assert.equal(host.isOpen(), true);
+  host.hide();
+  assert.equal(host.isOpen(), false);
+  await Promise.resolve();
+  assert.equal(saved!['drawer.ui']!.open, false);
+});

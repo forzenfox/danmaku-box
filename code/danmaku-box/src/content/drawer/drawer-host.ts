@@ -66,6 +66,7 @@ export interface DrawerHostDeps {
 export interface DrawerHost {
   mount(): void;
   toggle(): void;
+  hide(): void;
   isOpen(): boolean;
   dispose(): void;
 }
@@ -158,7 +159,11 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
     applyOpen(lastOpen);
     persist();
   }
-
+  function hide(): void {
+    // 程序化收起：不改 lastOpen（保留用户显式意图供全屏退出恢复），但仍写回会话关闭态
+    applyOpen(false);
+    persist();
+  }
 
   function dispose(): void {
     view?.removeEventListener('fullscreenchange', onFullscreen);
@@ -168,5 +173,5 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
     mounted = false;
   }
 
-  return { mount, toggle, isOpen: () => open, dispose };
+  return { mount, toggle, hide, isOpen: () => open, dispose };
 }
