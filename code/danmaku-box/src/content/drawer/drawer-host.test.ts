@@ -163,9 +163,12 @@ test('dispose 移除 Shadow 宿主节点', () => {
   assert.equal(hostDiv.removed, true, 'Shadow 宿主被移除（子树随之移除）');
 });
 
-test('DRAWER_STYLES 含 V2 布局参数（非全高 + 响应式宽度）', () => {
+test('DRAWER_STYLES 含 V2 布局参数（非全高 + 收窄响应式宽度）', () => {
   assert.match(DRAWER_STYLES, /height: min\(62vh, 560px\)/);
-  assert.match(DRAWER_STYLES, /width: min\(720px, 40vw\)/);
+  // 走查反馈：40vw 过宽遮挡左侧视频区，收窄至不超过右侧弹幕区宽度（V2.1 修正）
+  assert.match(DRAWER_STYLES, /width: min\(340px, 22vw\)/);
+  assert.match(DRAWER_STYLES, /max-width: 340px/);
+  assert.ok(!/width: min\(720px, 40vw\)/.test(DRAWER_STYLES), '不得再使用 40vw 宽覆盖视频区');
   assert.ok(!/bottom\s*:\s*0\s*;/.test(DRAWER_STYLES), '不得再全高贴底 bottom: 0');
 });
 

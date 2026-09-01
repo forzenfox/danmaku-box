@@ -19,6 +19,13 @@
           <button id="btn-new-danmaku" class="btn btn-primary" type="button" title="手动新建弹幕">
             ＋
           </button>
+          <!-- 批量操作组：与常规操作互斥，仅批量模式下显示（V2.2：操作按钮统一在顶部区域） -->
+          <div id="header-batch-actions" class="header-batch-actions hidden">
+            <span id="batch-count">已选 0 条</span>
+            <button id="btn-batch-move" class="btn" type="button">移动</button>
+            <button id="btn-batch-delete" class="btn btn-danger" type="button">删除</button>
+            <button id="btn-batch-exit" class="btn" type="button">退出批量</button>
+          </div>
         </div>
       </header>
       <div class="toolbar">
@@ -33,12 +40,6 @@
       <div class="panel-main">
         <nav id="group-nav" class="group-nav" aria-label="分组导航"></nav>
         <div id="list-container" class="list-container"></div>
-      </div>
-      <div id="batch-bar" class="batch-bar hidden">
-        <span id="batch-count">已选 0 条</span>
-        <button id="btn-batch-move" class="btn" type="button">移动</button>
-        <button id="btn-batch-delete" class="btn btn-danger" type="button">删除</button>
-        <button id="btn-batch-exit" class="btn" type="button">退出批量</button>
       </div>
       <footer class="panel-footer">
         <span id="usage">存储用量 —</span>

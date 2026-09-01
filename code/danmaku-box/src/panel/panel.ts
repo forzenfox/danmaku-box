@@ -14,6 +14,7 @@ import {
 import { sendMessage } from '../shared/messaging.ts';
 import { exportBackupToFile, importBackupFromFile } from '../shared/backup-ui.ts';
 import { createStorageWatcher } from './storage-watcher.ts';
+import { resolveContentClick, toggleChecked } from './list-interaction.ts';
 import type { Danmaku, Group } from '../shared/types.ts';
 
 interface GroupWithCount extends Group {
@@ -72,11 +73,14 @@ function h<K extends keyof HTMLElementTagNameMap>(
 const navEl = must('group-nav');
 const listEl = must('list-container');
 const countEl = must('count');
-const batchBarEl = must('batch-bar');
 const batchCountEl = must('batch-count');
+const batchActionsGroupEl = must('header-batch-actions');
 const usageEl = must('usage');
 const modalRoot = must('modal-root');
 const toastWrap = must('toast-wrap');
+
+// 批量模式下隐藏的常规头部操作（与批量操作组互斥）
+const NORMAL_HEADER_IDS = ['btn-batch', 'btn-import', 'btn-export', 'btn-new-danmaku'] as const;
 
 // ── toast（面板顶部右对齐，2 秒消失）─────────
 function toast(text: string, type: 'success' | 'warn' = 'success') {
@@ -358,9 +362,9 @@ function renderItem(item: Danmaku): HTMLElement {
     check.type = 'checkbox';
     check.className = 'item-check';
     check.checked = state.checked.has(item.id);
+    // 勾选框与内容单击共用 toggleChecked，保证两条路径勾选语义一致
     check.addEventListener('change', () => {
-      if (check.checked) state.checked.add(item.id);
-      else state.checked.delete(item.id);
+      toggleChecked(state.checked, item.id);
       renderBatchBar();
     });
     main.appendChild(check);
@@ -374,7 +378,22 @@ function renderItem(item: Danmaku): HTMLElement {
     content.textContent = item.content;
     if (item.content.length > 50) content.title = item.content;
   }
-  content.addEventListener('click', () => void fillDanmaku(item));
+  content.addEventListener('click', () => {
+    // 批量模式单击内容 = 切换勾选；非批量模式 = 回填（契约见 list-interaction.test.ts）
+    const intent = resolveContentClick({
+      batchMode: state.batchMode,
+      checked: state.checked,
+      id: item.id,
+    });
+    if (intent === 'toggle-check') {
+      toggleChecked(state.checked, item.id);
+      const check = main.querySelector('.item-check') as HTMLInputElement | null;
+      if (check) check.checked = state.checked.has(item.id);
+      renderBatchBar();
+    } else {
+      void fillDanmaku(item);
+    }
+  });
   main.appendChild(content);
 
   // 行内编辑态
@@ -449,9 +468,12 @@ function renderCount(): void {
 }
 
 function renderBatchBar(): void {
-  batchBarEl.classList.toggle('hidden', !state.batchMode);
+  // 顶部 header-actions 双态互斥：非批量显示常规操作；批量显示批量操作组（V2.2 走查反馈：操作按钮统一在顶部）
+  batchActionsGroupEl.classList.toggle('hidden', !state.batchMode);
+  for (const id of NORMAL_HEADER_IDS) {
+    must<HTMLElement>(id).classList.toggle('hidden', state.batchMode);
+  }
   batchCountEl.textContent = `已选 ${state.checked.size} 条`;
-  must<HTMLButtonElement>('btn-batch').textContent = state.batchMode ? '退出批量' : '批量管理';
 }
 
 async function renderUsage(): Promise<void> {

@@ -12,8 +12,8 @@ export const DRAWER_STYLES = `
     top: 0;
     right: 0;
     height: min(62vh, 560px);
-    width: min(720px, 40vw);
-    max-width: 720px;
+    width: min(340px, 22vw);
+    max-width: 340px;
     z-index: 2147483647;
     transform: translateX(105%);
     transition: transform 0.25s ease;

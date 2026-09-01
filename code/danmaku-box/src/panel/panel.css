@@ -290,25 +290,21 @@ body {
   font-size: 13px;
 }
 
-/* ── 批量操作栏 ───────────────────────────── */
-.batch-bar {
+/* ── 批量操作组（顶部 header，V2.2 走查反馈：操作按钮统一在顶部区域）────────── */
+.header-batch-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
-  background: #fafbfc;
-  flex-shrink: 0;
+  gap: 6px;
 }
 
-.batch-bar.hidden {
-  display: none;
+.hidden {
+  display: none !important;
 }
 
 #batch-count {
-  flex: 1;
   color: var(--text-secondary);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 /* ── 底部 ────────────────────────────────── */
