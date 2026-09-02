@@ -5,21 +5,29 @@
 ## 功能特性
 
 - **右键收藏**：在斗鱼直播间内选中弹幕文本，通过右键菜单一键收藏
+
 - **分组管理**：弹幕可按主题/分组组织和检索
+
 - **一键回填**：点击已收藏弹幕，自动回填到直播输入框，快速复用
+
 - **本地存储**：全部数据存于浏览器本地（chrome.storage.local），不经过任何服务器
+
 - **侧边栏面板**：基于 Chrome Side Panel API，不遮挡直播画面
 
 ## 技术栈
 
 - **语言**：TypeScript（strict 模式）
+
 - **构建**：esbuild（多入口独立打包为 IIFE，适配 MV3）
+
 - **测试**：node:test + TypeScript 直接运行（无额外测试框架）
+
 - **规范**：ESLint 9 + Prettier + tsconfig 严格配置
 
 ## 环境要求
 
 - Node.js >= 18（本地构建与测试）
+
 - Chrome >= 114（扩展运行）
 
 ## 快速开始
@@ -38,14 +46,14 @@ npm run build
 
 ## 常用命令
 
-| 命令                | 说明                                                      |
-| ------------------- | --------------------------------------------------------- |
+| 命令                  | 说明                                           |
+| ------------------- | -------------------------------------------- |
 | `npm run check`     | 完整检查：typecheck → lint → test → build，任一失败即中止 |
-| `npm run typecheck` | TypeScript 类型检查（tsc --noEmit）                       |
-| `npm run lint`      | ESLint 全量检查                                           |
-| `npm run test`      | 运行全部单元测试（node:test）                             |
-| `npm run build`     | esbuild 构建产物到 dist/                                  |
-| `npm run format`    | Prettier 全量格式化（提交前建议执行）                     |
+| `npm run typecheck` | TypeScript 类型检查（tsc --noEmit）                |
+| `npm run lint`      | ESLint 全量检查                                  |
+| `npm run test`      | 运行全部单元测试（node:test）                          |
+| `npm run build`     | esbuild 构建产物到 dist/                          |
+| `npm run format`    | Prettier 全量格式化（提交前建议执行）                      |
 
 开发常用流程：先 `npm test` 跑单测，再 `npm run check` 做完整门禁；每次修改后建议运行 `npm run format` 保持格式统一。
 
@@ -68,7 +76,9 @@ danmaku-box/
 ## 架构要点
 
 - **MV3 约束**：由于 content script 与 Service Worker 不支持加载 ES module 共享 chunk，每个入口独立打包为自包含 IIFE。
+
 - **存储抽象**：`storage.service.ts` 提供带依赖注入的存储层，支持 local / session 双区域隔离，便于测试替换。
+
 - **消息路由**：`message-router.ts` 集中处理 content/panel/settings 与 background 之间的消息协议（见 `src/shared/messaging.ts`）。
 
 ## 测试
@@ -81,3 +91,4 @@ node --test tests/storage/storage.service.test.ts   # 单文件测试
 ```
 
 > 新功能开发遵循 TDD：先写测试 → 运行失败 → 实现 → 通过 → 运行 `npm run check` 做完整门禁。
+

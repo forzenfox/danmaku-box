@@ -14,10 +14,10 @@
 
 ## 文件结构
 
-| 文件 | 动作 | 职责 |
-| ---- | -- | ---- |
-| `code/danmaku-box/src/content/drawer/drawer-host.ts` | 修改 | 新增 `defaultMeasureRect`/`DrawerRect`；`measureWidth`→`measureRect`；`applyWidth`→`applyRect`（写 left/top/width/height）；新增 `scroll` 监听 |
-| `code/danmaku-box/src/content/drawer/drawer-host.test.ts` | 修改 | 新增 defaultMeasureRect 契约测试；既有动态宽度测试升级为矩形语义；新增 scroll 跟随测试 |
+| 文件                                                        | 动作 | 职责                                                                                                                                 |
+| --------------------------------------------------------- | -- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `code/danmaku-box/src/content/drawer/drawer-host.ts`      | 修改 | 新增 `defaultMeasureRect`/`DrawerRect`；`measureWidth`→`measureRect`；`applyWidth`→`applyRect`（写 left/top/width/height）；新增 `scroll` 监听 |
+| `code/danmaku-box/src/content/drawer/drawer-host.test.ts` | 修改 | 新增 defaultMeasureRect 契约测试；既有动态宽度测试升级为矩形语义；新增 scroll 跟随测试                                                                          |
 
 所有 npm 命令在 `code/danmaku-box` 目录内执行（cwd: `D:\File\workSpace\AI-test\直播弹幕收藏插件可行性分析\code\danmaku-box`）。
 
@@ -28,6 +28,7 @@
 **Files:**
 
 - Modify: `code/danmaku-box/src/content/drawer/drawer-host.ts`（新增导出）
+
 - Modify: `code/danmaku-box/src/content/drawer/drawer-host.test.ts`（新增用例）
 
 - [x] **Step 1: 写失败测试**
@@ -57,6 +58,7 @@
 **Files:**
 
 - Modify: `code/danmaku-box/src/content/drawer/drawer-host.ts`
+
 - Modify: `code/danmaku-box/src/content/drawer/drawer-host.test.ts`
 
 - [x] **Step 1: 更新既有测试为矩形语义**
@@ -82,6 +84,7 @@
 **Files:**
 
 - Modify: `docs/superpowers/specs/2026-09-02-drawer-anchor-v4-design.md`（状态→验收/走查）
+
 - Create: `docs/superpowers/plans/2026-09-02-drawer-anchor-v4.md`（本计划）
 
 - [x] **Step 1: 更新 spec 状态为实现完成**
@@ -93,5 +96,8 @@
 ## Self-Review
 
 - **Spec 覆盖：** §5.1 变更（defaultMeasureRect/measureRect 注入/applyRect/scroll 监听）→ Task 1/2；§5.2 不改清单全部未触碰；§6 测试策略 8 类契约→Task 1（5 个纯函数）+ Task 2（6 个应用用例 + 回归）；§7 里程碑 V4.1/4.2/4.3 → Task 1/2/3。
+
 - **无占位符：** 所有步骤含完整语义描述与验证命令。
+
 - **类型一致性：** `measureRect` 返回 `DrawerRect | null` 由 `defaultMeasureRect` 与测试注入共用；`DrawerRect` 导出统一消费；旧 `defaultMeasureWidth` 无引用已删除。
+

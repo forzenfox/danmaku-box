@@ -238,12 +238,7 @@ function renderNav(): void {
   }
 }
 
-function chip(opts: {
-  active: boolean;
-  name: string;
-  count: number;
-  star?: boolean;
-}): HTMLElement {
+function chip(opts: { active: boolean; name: string; count: number; star?: boolean }): HTMLElement {
   const item = h('div', `nav-item${opts.active ? ' active' : ''}`);
   if (opts.star) item.appendChild(h('span', 'star', '★'));
   item.appendChild(h('span', 'nav-name', opts.name));
