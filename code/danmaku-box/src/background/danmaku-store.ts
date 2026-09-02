@@ -75,6 +75,11 @@ export interface DanmakuStore {
   updateDanmaku(id: string, content: string): Promise<void>;
   deleteDanmaku(ids: string[]): Promise<{ deleted: number }>;
   moveDanmaku(ids: string[], targetGroupId: string): Promise<{ moved: number }>;
+  /** 批量导入（官方收藏迁移用）：组内去重；空/超长内容计 invalid 不落库；一次落盘 */
+  importFavoriteDanmaku(
+    entries: Array<{ content: string }>,
+    targetGroupId: string,
+  ): Promise<{ added: number; skipped: number; invalid: number }>;
   getMenuContext(content: string): Promise<MenuGroup[]>;
 }
 
@@ -273,6 +278,44 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
         groups.map((g) => (g.id === groupId ? { ...g, last_used_at: record.created_at } : g)),
       );
       return { id: record.id, duplicate: false };
+    },
+
+    async importFavoriteDanmaku(
+      entries: Array<{ content: string }>,
+      targetGroupId: string,
+    ): Promise<{ added: number; skipped: number; invalid: number }> {
+      await requireGroupExists(targetGroupId);
+      const list = await loadDanmaku();
+      const seen = new Set(
+        list.filter((d) => d.group_id === targetGroupId).map((d) => normalize(d.content)),
+      );
+      let added = 0;
+      let skipped = 0;
+      let invalid = 0;
+      const batch: Danmaku[] = [];
+      for (const raw of entries) {
+        const content = String(raw.content ?? '').trim();
+        if (content.length < 1 || content.length > DANMAKU_MAX_LENGTH) {
+          invalid += 1;
+          continue;
+        }
+        if (seen.has(normalize(content))) {
+          skipped += 1;
+          continue;
+        }
+        seen.add(normalize(content));
+        batch.push({
+          id: newId('d'),
+          content,
+          group_id: targetGroupId,
+          platform: 'douyu',
+          room: '',
+          created_at: new Date().toISOString(),
+        });
+        added += 1;
+      }
+      if (batch.length > 0) await saveDanmaku([...list, ...batch]);
+      return { added, skipped, invalid };
     },
 
     async createDanmaku(input: {

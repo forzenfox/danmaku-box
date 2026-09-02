@@ -541,3 +541,47 @@ describe('getGroupsWithCounts（面板分组导航计数）', () => {
     );
   });
 });
+
+// importFavoriteDanmaku：批量导入官方收藏到目标分组（组内去重，一次落盘）。
+
+describe('DanmakuStore.importFavoriteDanmaku', () => {
+  async function setup() {
+    const area = new MemoryArea();
+    const store = await createDanmakuStore(createStorageService(area));
+    const group = await store.createGroup('斗鱼官收');
+    return { area, store, groupId: group.id } as const;
+  }
+
+  it('批量写入并返回 added，平台标记 douyu', async () => {
+    const { store, groupId } = await setup();
+    const r = await store.importFavoriteDanmaku([{ content: 'aaa' }, { content: 'bbb' }], groupId);
+    assert.deepEqual({ added: r.added, skipped: r.skipped, invalid: r.invalid }, { added: 2, skipped: 0, invalid: 0 });
+    const list = await store.listDanmaku({ groupId });
+    assert.equal(list.total, 2);
+    assert.equal(list.items[0]?.platform, 'douyu');
+  });
+
+  it('同组内按内容去重：重复条目计 skipped', async () => {
+    const { store, groupId } = await setup();
+    await store.importFavoriteDanmaku([{ content: 'x' }], groupId);
+    const r = await store.importFavoriteDanmaku([{ content: 'x' }, { content: 'y' }], groupId);
+    assert.deepEqual({ added: r.added, skipped: r.skipped }, { added: 1, skipped: 1 });
+  });
+
+  it('空内容与超长内容计 invalid（不落库）', async () => {
+    const { store, groupId } = await setup();
+    const r = await store.importFavoriteDanmaku(
+      [{ content: '' }, { content: 'a'.repeat(DANMAKU_MAX_LENGTH + 1) }, { content: 'ok' }],
+      groupId,
+    );
+    assert.deepEqual({ added: r.added, invalid: r.invalid }, { added: 1, invalid: 2 });
+  });
+
+  it('目标分组不存在时抛 NOT_FOUND，零写入', async () => {
+    const { store } = await setup();
+    await assert.rejects(
+      () => store.importFavoriteDanmaku([{ content: 'a' }], 'g_not_exist'),
+      (err: { code?: string }) => err.code === 'NOT_FOUND',
+    );
+  });
+});
