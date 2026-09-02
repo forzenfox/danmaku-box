@@ -6,6 +6,7 @@ import { MESSAGES } from '../shared/constants.ts';
 import { createDouyuAdapter } from './adapters/douyu.ts';
 import { createContextMenuController } from './context-menu.controller.ts';
 import { createDrawerHost, type DrawerSessionState } from './drawer/drawer-host.ts';
+import { safeSendMessage } from './extension-context.ts';
 import { createFillEngine } from './fill-engine.ts';
 import { createSiteDetector } from './site-detector.ts';
 
@@ -13,15 +14,15 @@ const detector = createSiteDetector({ douyu: createDouyuAdapter() });
 const detected = detector.detect(window.location, document);
 
 if (detected) {
-  // CS_READY 上报：建立 tabId→site 映射（service worker 写入 storage.session）
-  chrome.runtime
-    .sendMessage({
-      type: MESSAGES.CS_READY,
-      payload: { site: detected.site, status: detected.status },
-    })
-    .catch(() => {
-      // service worker 未就绪时静默失败，不影响页面（融入而非改造原则）
-    });
+  // CS_READY 上报：建立 tabId→site 映射（service worker 写入 storage.session）。
+  // 使用 safeSendMessage 包裹：扩展重载/SW 失效后老 content script 调用
+  // chrome.runtime.sendMessage 会**同步抛出**"Extension context invalidated"
+  // （不走 promise reject，.catch() 抓不住），safeSendMessage 内部已 try/catch
+  // 静默降级返回 Result.fail，避免污染页面（spec: 2026-09-02-extension-context-guard）。
+  void safeSendMessage(chrome, {
+    type: MESSAGES.CS_READY,
+    payload: { site: detected.site, status: detected.status },
+  });
 
   createContextMenuController({ adapter: detected.adapter }).mount();
 
