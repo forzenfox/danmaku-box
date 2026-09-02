@@ -707,6 +707,26 @@ interface SiteAdapter {
 
 所有模块错误经统一错误码返回 UI，UI 映射为中文提示；单模块异常不向上抛未捕获错误，避免拖垮页面与面板（PRD 第 7 章稳定性）。
 
+### 9.7 扩展上下文失效防护（Extension Context Guard）
+
+dev 流程（重载扩展 / service worker 失效）后，老 content script 仍驻留已打开的直播间页面，其持有的 `chrome.*` 引用全部失效。任何 chrome API 调用会**同步抛出** "Extension context invalidated"（不走 promise reject，`.catch()` 抓不住），错误冒泡到全局 → Chrome 错误面板显示 → 污染页面。**[Data-backed: 2026-09-02 dev 走查复现，错误堆栈指向 content.js `adapter.probe` 行附近]**
+
+| 防护点 | 行为 | 落地位置 |
+|--------|------|----------|
+| 同步抛错转 catch | `safeSendMessage(api, msg)` 包裹 `chrome.runtime.sendMessage`，识别错误消息含 "Extension context invalidated" 时返回 `CONTEXT_INVALIDATED`；其他同步 throw 归为 `SEND_FAILED` | `src/content/extension-context.ts` |
+| 启动期前置 guard | `isContextValid(api)` 检测 `chrome.runtime.id` 存在；失效则**不调用** sendMessage，直接返回 `CONTEXT_INVALIDATED`，避免在已失效上下文上无谓重试 | `src/content/extension-context.ts` |
+| 启动期调用改造 | `index.ts` 的 `CS_READY` 上报改用 `safeSendMessage(chrome, ...)`（替代裸 `chrome.runtime.sendMessage().catch()`，后者抓不住同步异常） | `src/content/index.ts` |
+| 业务调用复用既有 | 业务向 SW 的消息（`COLLECT_DANMAKU` / `GET_MENU_CONTEXT` / `FILL_REQUEST` 等）继续走 `shared/messaging.ts` sendMessage（已 try/catch 异步 reject 路径），不动 | `src/shared/messaging.ts` |
+| 错误码 | 新增 `CONTEXT_INVALIDATED`，区别于既有 `SEND_FAILED` / `NO_RESPONSE`，便于诊断 | `src/shared/types.ts`（Result.error.code 枚举） |
+
+**设计原则（融入而非改造）**：
+- 不重试、不弹 UI 提示、不主动清理老 content script（Chrome 自身已通过世界隔离处理）。失效是 dev 偶发现象，不打扰普通用户。
+- 依赖注入（`api: typeof chrome`）便于单测覆盖同步抛错场景，**纯函数**不依赖真实 chrome 全局。
+- 不在 `onMessage` listener 内部加 guard：消息到达时回调内不再调 chrome API（fillEngine / drawer 都是纯 DOM 操作），无需重复防护。
+- drawer host 的 `getURL` / `storage.session` 暂不改造：drawer 运行时失效属另一种场景（如页面 onMessage 触发），按需后续扩展，避免单次 PR 范围爆炸。
+
+关联 spec：`docs/superpowers/specs/2026-09-02-extension-context-guard.md`。
+
 ---
 
 ## 10. 风险与对策
