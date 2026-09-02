@@ -9,6 +9,9 @@ dist/
 # TRAE 工具生成的 HTML 分享包缓存（可由源 HTML 重新打包）
 .trae-html-share-packages/
 
+# 视觉伴侣（brainstorming）会话产物
+.superpowers/
+
 # 操作系统
 .DS_Store
 Thumbs.db
