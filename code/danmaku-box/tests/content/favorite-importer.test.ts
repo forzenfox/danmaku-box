@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFavoriteResponse } from '../../src/content/favorite-importer.ts';
+import { parseFavoriteResponse, probeDouyuLogin } from '../../src/content/favorite-importer.ts';
 import type { FavoriteItem } from '../../src/shared/types.ts';
 
 // parseFavoriteResponse：将官方 bulletscreen/query 响应解析为条目数组。
@@ -33,5 +33,32 @@ describe('parseFavoriteResponse', () => {
   it('非对象入参（null/字符串）抛 TypeError', () => {
     assert.throws(() => parseFavoriteResponse(null));
     assert.throws(() => parseFavoriteResponse('not-json'));
+  });
+
+  it('list 条目为非对象（字符串）时安全兜底为空对象', () => {
+    const list = parseFavoriteResponse({ data: { list: ['abc', 123] } });
+    assert.equal(list.length, 2);
+    assert.equal(list[0]?.content, '');
+    assert.equal(list[1]?.content, '');
+  });
+
+  it('type/id 为非 number（如字符串）时置 undefined', () => {
+    const items = parseFavoriteResponse({ data: { list: [{ content: 'x', type: '2', id: '101' }] } });
+    assert.equal(items[0]?.type, undefined);
+    assert.equal(items[0]?.id, undefined);
+  });
+});
+
+describe('probeDouyuLogin', () => {
+  it('cookie 含 acf_uid 判定已登录（2026-09-02 实测登录态含该键）', () => {
+    assert.equal(probeDouyuLogin('foo=1; acf_uid=2154363; dy_did=x'), true);
+  });
+
+  it('仅游客 cookie（dy_did/acf_did）判定未登录', () => {
+    assert.equal(probeDouyuLogin('dy_did=abc; acf_did=xyz'), false);
+  });
+
+  it('空 cookie 判定未登录', () => {
+    assert.equal(probeDouyuLogin(''), false);
   });
 });

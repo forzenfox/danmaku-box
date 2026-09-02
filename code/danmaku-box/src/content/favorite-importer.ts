@@ -25,3 +25,8 @@ export function parseFavoriteResponse(raw: unknown): FavoriteItem[] {
     };
   });
 }
+
+/** 登录态探测：斗鱼登录后在 douyu.com 域种 acf_uid cookie（2026-09-02 实测）。 */
+export function probeDouyuLogin(cookie: string): boolean {
+  return /(?:^|;)\s*acf_uid=/.test(cookie);
+}
