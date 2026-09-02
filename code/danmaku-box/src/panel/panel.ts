@@ -6,7 +6,6 @@ import './panel.css';
 import '../shared/backup-ui.css';
 import {
   DANMAKU_MAX_LENGTH,
-  DEFAULT_GROUP_ID,
   GROUP_NAME_MAX_LENGTH,
   MESSAGES,
   STORAGE_KEYS,
@@ -15,11 +14,9 @@ import { sendMessage } from '../shared/messaging.ts';
 import { exportBackupToFile, importBackupFromFile } from '../shared/backup-ui.ts';
 import { createStorageWatcher } from './storage-watcher.ts';
 import { resolveContentClick, toggleChecked } from './list-interaction.ts';
+import { buildNavItems } from './nav-items.ts';
+import type { GroupWithCount, NavItemSpec } from './nav-items.ts';
 import type { Danmaku, Group } from '../shared/types.ts';
-
-interface GroupWithCount extends Group {
-  count: number;
-}
 
 interface ListData {
   items: Danmaku[];
@@ -48,8 +45,6 @@ const state = {
   renamingGroupId: null as string | null,
   creatingGroup: false,
   fillMode: 'replace' as 'replace' | 'append',
-  /** 活动标签页适配状态：ok / no_active_tab / unsupported / adapter_down */
-  siteStatus: null as string | null,
 };
 
 // ── DOM 工具 ──────────────────────────────────
@@ -146,66 +141,7 @@ async function persistSelectedGroup(): Promise<void> {
 // ── 渲染：分组导航 ───────────────────────────
 function renderNav(): void {
   navEl.replaceChildren();
-
-  const totalAll = state.groups.reduce((sum, g) => sum + g.count, 0);
-  navEl.appendChild(
-    navItem(String(state.selectedGroupId === null), '全部弹幕', totalAll, null, () => {
-      state.selectedGroupId = null;
-      void selectAndLoad();
-    }),
-  );
-
-  for (const g of state.groups) {
-    if (g.id === DEFAULT_GROUP_ID) {
-      const star = h('span', 'star', '★');
-      navEl.appendChild(
-        navItem(String(state.selectedGroupId === g.id), g.name, g.count, star, () => {
-          state.selectedGroupId = g.id;
-          void selectAndLoad();
-        }),
-      );
-    } else if (state.renamingGroupId === g.id) {
-      const wrap = h('div', 'nav-item');
-      const input = document.createElement('input');
-      input.className = 'nav-input';
-      input.value = g.name;
-      input.maxLength = GROUP_NAME_MAX_LENGTH;
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') void renameGroup(g.id, input.value);
-        if (e.key === 'Escape') {
-          state.renamingGroupId = null;
-          renderNav();
-        }
-      });
-      input.addEventListener('blur', () => {
-        if (state.renamingGroupId === g.id) {
-          state.renamingGroupId = null;
-          renderNav();
-        }
-      });
-      wrap.appendChild(input);
-      navEl.appendChild(wrap);
-      input.focus();
-    } else {
-      const item = navItem(String(state.selectedGroupId === g.id), g.name, g.count, null, () => {
-        state.selectedGroupId = g.id;
-        void selectAndLoad();
-      });
-      const more = document.createElement('button');
-      more.className = 'nav-more';
-      more.type = 'button';
-      more.textContent = '⋮';
-      more.title = '分组操作';
-      more.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showGroupMenu(e as MouseEvent, g);
-      });
-      item.appendChild(more);
-      navEl.appendChild(item);
-    }
-  }
-
-  // ＋ 新建分组（行内输入）
+  // 创建分组输入态：短路渲染在横滚容器内（置于循环之前）
   if (state.creatingGroup) {
     const wrap = h('div', 'nav-item');
     const input = document.createElement('input');
@@ -228,28 +164,90 @@ function renderNav(): void {
     wrap.appendChild(input);
     navEl.appendChild(wrap);
     input.focus();
-  } else {
-    const add = h('div', 'nav-new-group', '＋ 新建分组');
-    add.addEventListener('click', () => {
-      state.creatingGroup = true;
-      renderNav();
+    return;
+  }
+
+  const specs: NavItemSpec[] = buildNavItems(state.groups, state.selectedGroupId);
+  for (const spec of specs) {
+    if (spec.kind === 'all') {
+      const item = chip({ active: spec.active, name: spec.name, count: spec.count });
+      item.addEventListener('click', () => {
+        state.selectedGroupId = null;
+        void selectAndLoad();
+      });
+      navEl.appendChild(item);
+      continue;
+    }
+    if (spec.kind === 'new') {
+      const add = h('div', 'nav-item nav-new-group', '＋ 新建分组');
+      add.addEventListener('click', () => {
+        state.creatingGroup = true;
+        renderNav();
+      });
+      navEl.appendChild(add);
+      continue;
+    }
+
+    // 分组 chip：重命名态渲染输入框
+    if (state.renamingGroupId === spec.id) {
+      const wrap = h('div', 'nav-item');
+      const input = document.createElement('input');
+      input.className = 'nav-input';
+      input.value = spec.name;
+      input.maxLength = GROUP_NAME_MAX_LENGTH;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') void renameGroup(spec.id, input.value);
+        if (e.key === 'Escape') {
+          state.renamingGroupId = null;
+          renderNav();
+        }
+      });
+      input.addEventListener('blur', () => {
+        if (state.renamingGroupId === spec.id) {
+          state.renamingGroupId = null;
+          renderNav();
+        }
+      });
+      wrap.appendChild(input);
+      navEl.appendChild(wrap);
+      input.focus();
+      continue;
+    }
+
+    const item = chip({
+      active: spec.active,
+      name: spec.name,
+      count: spec.count,
+      star: spec.builtin,
     });
-    navEl.appendChild(add);
+    item.addEventListener('click', () => {
+      state.selectedGroupId = spec.id;
+      void selectAndLoad();
+    });
+    const more = document.createElement('button');
+    more.className = 'nav-more';
+    more.type = 'button';
+    more.textContent = '⋮';
+    more.title = '分组操作';
+    more.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showGroupMenu(e as MouseEvent, spec.group);
+    });
+    item.appendChild(more);
+    navEl.appendChild(item);
   }
 }
 
-function navItem(
-  active: string,
-  name: string,
-  count: number,
-  prefix: HTMLElement | null,
-  onClick: () => void,
-): HTMLElement {
-  const item = h('div', `nav-item${active === 'true' ? ' active' : ''}`);
-  if (prefix) item.appendChild(prefix);
-  item.appendChild(h('span', 'nav-name', name));
-  item.appendChild(h('span', 'nav-count', String(count)));
-  item.addEventListener('click', onClick);
+function chip(opts: {
+  active: boolean;
+  name: string;
+  count: number;
+  star?: boolean;
+}): HTMLElement {
+  const item = h('div', `nav-item${opts.active ? ' active' : ''}`);
+  if (opts.star) item.appendChild(h('span', 'star', '★'));
+  item.appendChild(h('span', 'nav-name', opts.name));
+  item.appendChild(h('span', 'nav-count', String(opts.count)));
   return item;
 }
 
@@ -305,6 +303,24 @@ function timeAgo(iso: string): string {
   if (days < 7) return `${days}天前`;
   if (days < 30) return `${Math.floor(days / 7)}周前`;
   return new Date(iso).toLocaleDateString('zh-CN');
+}
+
+// 铅笔 SVG 图标（编辑指示）
+function pencilIcon(): SVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.6');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', 'M11.5 2.5l2 2L6.5 11.5l-3 1 1-3 7-7z');
+  svg.appendChild(path);
+  return svg;
 }
 
 function renderList(): void {
@@ -390,6 +406,10 @@ function renderItem(item: Danmaku): HTMLElement {
       const check = main.querySelector('.item-check') as HTMLInputElement | null;
       if (check) check.checked = state.checked.has(item.id);
       renderBatchBar();
+    } else if (item.content === '') {
+      // V3：空内容弹幕无法回填，单击直接进入编辑态（spec §5.2）
+      state.editingId = item.id;
+      renderList();
     } else {
       void fillDanmaku(item);
     }
@@ -415,34 +435,20 @@ function renderItem(item: Danmaku): HTMLElement {
     return row;
   }
 
-  // 常态（非批量）行内仅保留回填/编辑；移动/删除并入底部批量栏（spec §5.2）。
-  // 批量模式行内不渲染任何按钮，仅勾选框 + 内容。
+  // 常态行内（V3）：回填=单击内容；仅 hover/聚焦浮现 ✎ 编辑图标；移动/删除并入批量栏
   if (!state.batchMode) {
     const actions = h('div', 'item-actions');
-
-    const fill = h('button', 'btn', '回填');
-    fill.type = 'button';
-    if (item.content === '') {
-      fill.disabled = true;
-      fill.title = '该弹幕无文本内容，无法回填';
-    } else if (state.siteStatus !== 'ok') {
-      fill.disabled = true;
-      fill.title =
-        state.siteStatus === 'adapter_down'
-          ? '直播页已改版，回填暂不可用，请等待插件更新'
-          : '请在斗鱼直播间页面使用';
-    }
-    fill.addEventListener('click', () => void fillDanmaku(item));
-    actions.appendChild(fill);
-
-    const edit = h('button', 'btn', '编辑');
+    const edit = document.createElement('button');
     edit.type = 'button';
+    edit.className = 'item-edit-icon';
+    edit.title = '编辑';
+    edit.setAttribute('aria-label', '编辑');
+    edit.appendChild(pencilIcon());
     edit.addEventListener('click', () => {
       state.editingId = item.id;
       renderList();
     });
     actions.appendChild(edit);
-
     main.appendChild(actions);
   }
   row.appendChild(main);
@@ -811,6 +817,53 @@ function showNewDanmakuModal(): void {
 }
 
 // ── 事件绑定 ─────────────────────────────────
+
+// ── 分组区拖拽平移（V3.1）──────────────
+// pointer 拖拽：按住横向平移 navEl；移动超过阈值后抑制随后的 click，避免误切分组。
+let dragActive = false;
+let dragStartX = 0;
+let dragStartLeft = 0;
+let dragMovedAmount = 0;
+let suppressNavClick = false;
+
+navEl.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return; // 仅左键
+  dragActive = true;
+  dragStartX = e.clientX;
+  dragStartLeft = navEl.scrollLeft;
+  dragMovedAmount = 0;
+  navEl.classList.add('dragging');
+});
+
+window.addEventListener('pointermove', (e) => {
+  if (!dragActive) return;
+  const dx = e.clientX - dragStartX;
+  navEl.scrollLeft = dragStartLeft - dx;
+  dragMovedAmount = Math.max(dragMovedAmount, Math.abs(dx));
+});
+
+function endDrag(): void {
+  if (!dragActive) return;
+  dragActive = false;
+  navEl.classList.remove('dragging');
+  if (dragMovedAmount > 6) suppressNavClick = true;
+}
+
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+
+navEl.addEventListener(
+  'click',
+  (e) => {
+    if (suppressNavClick) {
+      e.stopPropagation();
+      e.preventDefault();
+      suppressNavClick = false;
+    }
+  },
+  true,
+);
+
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 must<HTMLInputElement>('search').addEventListener('input', (e) => {
   clearTimeout(searchTimer);
@@ -914,11 +967,6 @@ storageWatcher.mount();
 
 async function init(): Promise<void> {
   void sendMessage(MESSAGES.PANEL_OPENED);
-  // 面板打开即预查站点状态：非直播间/适配失效时「回填」预先置灰（原型 3.4.1）
-  const site = await sendMessage<{ tabId: number | null; site: string | null; status: string }>(
-    MESSAGES.GET_SITE_STATE,
-  );
-  if (site.ok && site.data) state.siteStatus = site.data.status;
   const settings = await sendMessage<{
     settings: { fillMode: 'replace' | 'append'; last_selected_group: string | null };
   }>(MESSAGES.GET_SETTINGS);

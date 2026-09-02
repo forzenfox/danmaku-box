@@ -138,29 +138,55 @@ body {
   background: #fff;
 }
 
-/* ── 主区：左列分组 + 右侧列表 ─────────────── */
+/* ── 主区：顶部横滚分组 + 下方列表（V3 水平化） ── */
 .panel-main {
   flex: 1;
   display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
 .group-nav {
-  width: 150px;
+  width: 100%;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+  scrollbar-width: thin;
+}
+
+.group-nav.dragging {
+  cursor: grabbing;
+}
+
+.group-nav::-webkit-scrollbar {
+  height: 4px;
+}
+
+.group-nav::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-full);
 }
 
 .nav-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
   cursor: pointer;
   user-select: none;
-  border-left: 2px solid transparent;
+  color: var(--text);
+  background: #fff;
+  font-size: 12px;
 }
 
 .nav-item:hover {
@@ -169,11 +195,12 @@ body {
 
 .nav-item.active {
   background: var(--bg-active);
-  border-left-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .nav-item .nav-name {
-  flex: 1;
+  max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,42 +212,37 @@ body {
 }
 
 .nav-item .nav-more {
+  visibility: hidden;
   border: none;
   background: none;
   cursor: pointer;
   color: var(--text-secondary);
   font-size: 13px;
   padding: 0 2px;
-  border-radius: 3px;
+  border-radius: 4px;
   line-height: 1;
 }
 
-.nav-item .nav-more:hover {
-  background: var(--border);
-  color: var(--text);
+.nav-item:hover .nav-more,
+.nav-item:focus-within .nav-more {
+  visibility: visible;
 }
 
 .nav-item .star {
   color: #f7ba1e;
 }
 
-.nav-new-group {
-  padding: 8px 12px;
+.nav-item.nav-new-group {
   color: var(--primary);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.nav-new-group:hover {
-  background: var(--bg-hover);
+  border-style: dashed;
+  border-color: var(--primary);
 }
 
 .nav-input {
-  width: 100%;
-  margin: 2px 0;
-  padding: 5px 8px;
+  width: 140px;
+  padding: 3px 8px;
   border: 1px solid var(--primary);
-  border-radius: 4px;
+  border-radius: var(--radius-full);
   font-size: 12px;
 }
 
@@ -277,9 +299,22 @@ body {
   flex-shrink: 0;
 }
 
-.item-actions .btn {
-  padding: 2px 8px;
-  font-size: 11px;
+.item-actions .item-edit-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.danmaku-item:hover .item-edit-icon,
+.danmaku-item:focus-within .item-edit-icon {
+  visibility: visible;
 }
 
 .edit-input {
