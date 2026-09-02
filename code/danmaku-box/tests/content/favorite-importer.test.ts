@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFavoriteResponse, probeDouyuLogin } from '../../src/content/favorite-importer.ts';
+import {
+  handleFavoriteRequest,
+  parseFavoriteResponse,
+  probeDouyuLogin,
+} from '../../src/content/favorite-importer.ts';
 import type { FavoriteItem } from '../../src/shared/types.ts';
 
 // parseFavoriteResponse：将官方 bulletscreen/query 响应解析为条目数组。
@@ -8,10 +12,15 @@ import type { FavoriteItem } from '../../src/shared/types.ts';
 
 describe('parseFavoriteResponse', () => {
   it('解析合法响应：提取 content/type/id', () => {
-    const raw = { error: 0, data: { list: [
-      { content: '第一条', type: 2, id: 101 },
-      { content: '第二条', type: 2, id: 102 },
-    ] } };
+    const raw = {
+      error: 0,
+      data: {
+        list: [
+          { content: '第一条', type: 2, id: 101 },
+          { content: '第二条', type: 2, id: 102 },
+        ],
+      },
+    };
     assert.deepEqual(parseFavoriteResponse(raw), [
       { content: '第一条', type: 2, id: 101 },
       { content: '第二条', type: 2, id: 102 },
@@ -43,7 +52,9 @@ describe('parseFavoriteResponse', () => {
   });
 
   it('type/id 为非 number（如字符串）时置 undefined', () => {
-    const items = parseFavoriteResponse({ data: { list: [{ content: 'x', type: '2', id: '101' }] } });
+    const items = parseFavoriteResponse({
+      data: { list: [{ content: 'x', type: '2', id: '101' }] },
+    });
     assert.equal(items[0]?.type, undefined);
     assert.equal(items[0]?.id, undefined);
   });
@@ -60,5 +71,51 @@ describe('probeDouyuLogin', () => {
 
   it('空 cookie 判定未登录', () => {
     assert.equal(probeDouyuLogin(''), false);
+  });
+});
+
+describe('handleFavoriteRequest', () => {
+  function fetchOk(
+    body: unknown,
+  ): (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }> {
+    return async () => ({ ok: true, json: async () => body });
+  }
+  function fetchFail(): Promise<{ ok: boolean; json: () => Promise<unknown> }> {
+    return Promise.resolve({ ok: false, json: async () => ({}) });
+  }
+
+  it('已登录且接口正常：返回 items', async () => {
+    const r = await handleFavoriteRequest({
+      cookie: 'acf_uid=1',
+      fetchImpl: fetchOk({ data: { list: [{ content: 'a', type: 2, id: 1 }] } }),
+    });
+    assert.equal(r.ok, true);
+    assert.equal((r.data as { items: { content: string }[] }).items[0]?.content, 'a');
+  });
+
+  it('未登录：返回 NOT_LOGGED_IN 且不发请求', async () => {
+    let called = false;
+    const r = await handleFavoriteRequest({
+      cookie: 'dy_did=x',
+      fetchImpl: async () => {
+        called = true;
+        return { ok: true, json: async () => ({ data: { list: [] } }) };
+      },
+    });
+    assert.equal(r.ok, false);
+    assert.equal((r.error as { code: string }).code, 'NOT_LOGGED_IN');
+    assert.equal(called, false);
+  });
+
+  it('网络/接口失败：返回 SOURCE_UNAVAILABLE', async () => {
+    const r = await handleFavoriteRequest({ cookie: 'acf_uid=1', fetchImpl: fetchFail });
+    assert.equal(r.ok, false);
+    assert.equal((r.error as { code: string }).code, 'SOURCE_UNAVAILABLE');
+  });
+
+  it('接口返回畸形响应（非对象）：返回 SOURCE_UNAVAILABLE 而非抛异常', async () => {
+    const r = await handleFavoriteRequest({ cookie: 'acf_uid=1', fetchImpl: fetchOk('oops') });
+    assert.equal(r.ok, false);
+    assert.equal((r.error as { code: string }).code, 'SOURCE_UNAVAILABLE');
   });
 });

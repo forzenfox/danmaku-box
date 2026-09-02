@@ -16,7 +16,12 @@ import { createStorageWatcher } from './storage-watcher.ts';
 import { resolveContentClick, toggleChecked } from './list-interaction.ts';
 import { buildNavItems } from './nav-items.ts';
 import type { GroupWithCount, NavItemSpec } from './nav-items.ts';
-import type { Danmaku, Group } from '../shared/types.ts';
+import type { Danmaku, FavoriteItem, Group } from '../shared/types.ts';
+import {
+  FAVORITE_EMPTY_HINT,
+  favoriteImportHint,
+  favoriteImportSummary,
+} from './favorite-import.ts';
 
 interface ListData {
   items: Danmaku[];
@@ -347,6 +352,10 @@ function renderList(): void {
       add.type = 'button';
       add.addEventListener('click', () => void showNewDanmakuModal());
       empty.appendChild(add);
+      const favBtn = h('button', 'btn', '一键导入斗鱼官方收藏');
+      favBtn.type = 'button';
+      favBtn.addEventListener('click', () => void startFavoriteImport());
+      empty.appendChild(favBtn);
     } else {
       empty.appendChild(h('div', 'empty-title', '该分组还没有弹幕'));
       empty.appendChild(h('div', undefined, '去直播间右键收藏，或在全部弹幕中移动到这里'));
@@ -362,6 +371,73 @@ function renderList(): void {
   if (state.hasMore) {
     listEl.appendChild(h('div', 'loading-hint', '下拉加载更多…'));
   }
+}
+
+// 官方收藏导入流程：拉取 → 选组 → 落库（决策 2/3 文案走纯函数映射）
+async function startFavoriteImport(): Promise<void> {
+  const r = await sendMessage<{ items: FavoriteItem[] }>(MESSAGES.GET_DOUYU_FAVORITE);
+  if (!r.ok) {
+    toast(favoriteImportHint(r.error?.code), 'warn');
+    return;
+  }
+  const items = r.data?.items ?? [];
+  if (items.length === 0) {
+    toast(FAVORITE_EMPTY_HINT, 'warn');
+    return;
+  }
+  const groupId = await pickTargetGroup(items.length);
+  if (groupId === null) return; // 用户取消
+  const imp = await sendMessage<{ added: number; skipped: number; invalid: number }>(
+    MESSAGES.IMPORT_FAVORITE_DANMAKU,
+    { entries: items.map((i) => ({ content: i.content })), groupId },
+  );
+  if (!imp.ok) {
+    toast(favoriteImportHint(imp.error?.code), 'warn');
+    return;
+  }
+  toast(
+    favoriteImportSummary({
+      added: imp.data?.added ?? 0,
+      skipped: imp.data?.skipped ?? 0,
+      invalid: imp.data?.invalid ?? 0,
+    }),
+  );
+  void loadList(true);
+}
+
+// 目标分组选择弹窗（原生 select + 确认/取消）
+async function pickTargetGroup(count: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const wrap = h('div', 'modal-mask');
+    const box = h('div', 'modal');
+    box.appendChild(h('h3', undefined, `共 ${count} 条官方收藏，导入到分组：`));
+    const select = document.createElement('select');
+    select.className = 'group-select';
+    for (const g of state.groups) {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = g.name;
+      select.appendChild(opt);
+    }
+    box.appendChild(select);
+    const actions = h('div', 'modal-actions');
+    const cancel = h('button', 'btn', '取消');
+    const confirm = h('button', 'btn btn-primary', '导入');
+    actions.appendChild(cancel);
+    actions.appendChild(confirm);
+    box.appendChild(actions);
+    wrap.appendChild(box);
+    modalRoot.appendChild(wrap);
+    let done = false;
+    const close = (value: string | null) => {
+      if (done) return;
+      done = true;
+      wrap.remove();
+      resolve(value as string | null);
+    };
+    cancel.addEventListener('click', () => close(null));
+    confirm.addEventListener('click', () => close(select.value));
+  });
 }
 
 function renderItem(item: Danmaku): HTMLElement {

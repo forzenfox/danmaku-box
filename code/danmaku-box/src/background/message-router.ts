@@ -149,6 +149,35 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
       }
       return { tabId: active.tabId, site: info.site, status };
     },
+    [MESSAGES.GET_DOUYU_FAVORITE]: async () => {
+      // 复用回填的 tab 前置校验：活动标签页必须为 douyu 站点
+      const tabId = await resolveFillTarget();
+      const response = await tab.sendToTab(tabId, MESSAGES.GET_DOUYU_FAVORITE, {});
+      if (typeof response !== 'object' || response === null || !('ok' in response)) {
+        throw new StoreError(ERROR_CODES.DELIVERY_FAILED, '直播页未就绪，请刷新后重试');
+      }
+      const envelope = response as {
+        ok: boolean;
+        data?: unknown;
+        error?: { code?: string; message?: string };
+      };
+      // content 回包错误（NOT_LOGGED_IN / SOURCE_UNAVAILABLE）需透传错误语义，
+      // 面板据此展示决策 3「未登录先登录」等提示，不得吞成空 data
+      if (!envelope.ok) {
+        throw new StoreError(
+          envelope.error?.code ?? ERROR_CODES.SOURCE_UNAVAILABLE,
+          envelope.error?.message ?? '获取官方收藏失败',
+        );
+      }
+      return envelope.data ?? {};
+    },
+    [MESSAGES.IMPORT_FAVORITE_DANMAKU]: (p) =>
+      enqueueWrite(() =>
+        store.importFavoriteDanmaku(
+          (Array.isArray(p.entries) ? p.entries : []) as Array<{ content: string }>,
+          String(p.groupId ?? ''),
+        ),
+      ),
     [MESSAGES.GET_SETTINGS]: async () => ({ settings: await settings.get() }),
     [MESSAGES.SAVE_SETTINGS]: (p) =>
       enqueueWrite(() => settings.set(p.patch as Parameters<SettingsService['set']>[0])).then(
@@ -205,6 +234,7 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     MESSAGES.UPDATE_DANMAKU,
     MESSAGES.DELETE_DANMAKU,
     MESSAGES.MOVE_DANMAKU,
+    MESSAGES.IMPORT_FAVORITE_DANMAKU,
     MESSAGES.SAVE_SETTINGS,
   ]);
 

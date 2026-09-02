@@ -324,6 +324,8 @@ flowchart TB
 | `IMPORT_BACKUP` | panel→background | `{backup, strategy}` | `{added, skipped, mergedGroups}` | `BAD_FORMAT`、`MIGRATE_FAILED` |
 | `GET_DIAG` | panel→background | `{}` | `{diagnostics}` | `READ_FAILED` |
 | `PANEL_OPENED/CLOSED` | panel→background | `{}` | `{}` | — |
+| `GET_DOUYU_FAVORITE` | panel→background→content | `{}` | `{items}` | `NO_ACTIVE_TAB`、`SITE_UNSUPPORTED`、`DELIVERY_FAILED`、`NOT_LOGGED_IN`、`SOURCE_UNAVAILABLE` |
+| `IMPORT_FAVORITE_DANMAKU` | panel→background | `{entries, groupId}` | `{added, skipped, invalid}` | `NOT_FOUND`、`WRITE_FAILED` |
 
 **契约要点**：
 - `FILL_REQUEST` 由 background 查询当前活动标签页（`tabs.query({active, lastFocusedWindow})`），按 `CS_READY` 维护的 `tabId→site` 映射校验站点，再经 `chrome.tabs.sendMessage` 下发 `FILL_ACTION`，content script 执行后将结果原路回执 [Expert judgment]。适配状态采用**实时判定**：不依赖注入时快照 status，而以 `FILL_ACTION` 执行回执为准——输入框缺失（`reason=NO_INPUT`）映射 `ADAPTER_DOWN`（解决斗鱼弹幕列表延迟渲染导致的过期误判，见 8.2/9.6）。
@@ -335,6 +337,8 @@ flowchart TB
 - SW 内存态持久化：`CS_READY` 维护的 `tabId→site` 映射与分组快照缓存写入 `chrome.storage.session`（随浏览器会话存续，SW 回收重启后自动恢复读取，不落磁盘）；SW 冷启动时若无映射（浏览器整体重启），由 `tabs.query` + 各已打开 tab 的 content script 重新上报 `CS_READY` 重建 [Expert judgment]。
 - 错误码统一为稳定字符串，UI 侧映射为中文提示，不含堆栈细节，避免向页面上下文泄露内部信息。
 - **存储变更驱动刷新**：面板监听 `chrome.storage.onChanged`（仅 local 区 + 本插件 key `db.danmaku`/`db.groups`，防抖 150ms 合并），content script 右键收藏等外部写入后自动刷新当前分组列表与分组计数，且保留用户的分组/关键词/排序状态。面板自身增删改后不再主动 `loadList`，统一由此驱动，避免重复加载（仅 `loadGroups` 即时更新分组 UI）[Data-backed: 2026-08 实测右键收藏后列表不自动刷新]。`selectAndLoad`（切换分组）等用户交互路径仍主动加载。
+
+**官方收藏导入接口核验（2026-09-02 实机）**：端点 `GET https://www.douyu.com/japi/privateCustomApi/favorite/web/bulletscreen/query`，cookie 鉴权、无签名参数、无网络分页（一次 query 返回全量，前端虚拟滚动仅窗口化渲染）；未登录时官方前端不发请求直接弹登录框，插件侧以 `acf_uid` cookie 探测登录态（`src/content/favorite-importer.ts`）。导入边界仅官方云端收藏，不含 DouyuEx 本地扩展库。
 
 ### 5.3 导入导出 JSON 文件格式 Schema
 

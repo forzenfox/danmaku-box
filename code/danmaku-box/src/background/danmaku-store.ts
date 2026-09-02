@@ -75,7 +75,7 @@ export interface DanmakuStore {
   updateDanmaku(id: string, content: string): Promise<void>;
   deleteDanmaku(ids: string[]): Promise<{ deleted: number }>;
   moveDanmaku(ids: string[], targetGroupId: string): Promise<{ moved: number }>;
-  /** 批量导入（官方收藏迁移用）：组内去重；空/超长内容计 invalid 不落库；一次落盘 */
+  /** 批量导入收藏弹幕：组内去重、空/超长计 invalid 不落库；一次落盘（不回写分组 last_used_at） */
   importFavoriteDanmaku(
     entries: Array<{ content: string }>,
     targetGroupId: string,
@@ -284,6 +284,8 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
       entries: Array<{ content: string }>,
       targetGroupId: string,
     ): Promise<{ added: number; skipped: number; invalid: number }> {
+      // 本接口当前仅用于斗鱼官方收藏迁移，故 platform 固定为 douyu；
+      // 与 createDanmaku 抛错语义不同：批量导入对空/超长计 invalid 继续，不中断整批。
       await requireGroupExists(targetGroupId);
       const list = await loadDanmaku();
       const seen = new Set(

@@ -17,7 +17,7 @@ import {
 // 6.2 节实体约束、PRD V1.2 字段规则完全一致。
 
 describe('消息协议常量（技术方案 5.2）', () => {
-  it('包含全部 25 个消息名且值稳定', () => {
+  it('包含全部 26 个消息名且值稳定', () => {
     assert.deepStrictEqual(MESSAGES, {
       CS_READY: 'CS_READY',
       GET_MENU_CONTEXT: 'GET_MENU_CONTEXT',

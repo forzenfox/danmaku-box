@@ -8,6 +8,7 @@ import { createContextMenuController } from './context-menu.controller.ts';
 import { createDrawerHost, type DrawerSessionState } from './drawer/drawer-host.ts';
 import { safeSendMessage } from './extension-context.ts';
 import { createFillEngine } from './fill-engine.ts';
+import { handleFavoriteRequest } from './favorite-importer.ts';
 import { createSiteDetector } from './site-detector.ts';
 
 const detector = createSiteDetector({ douyu: createDouyuAdapter() });
@@ -68,6 +69,21 @@ if (detected) {
       // 覆盖注入时一次性快照的滞后（如弹幕列表延迟渲染导致的过期 adapter_down）。
       const probe = detected.adapter.probe(document);
       sendResponse({ site: detected.site, status: probe.ok ? 'ok' : 'adapter_down' });
+    } else if (type === MESSAGES.GET_DOUYU_FAVORITE) {
+      // 面板「一键导入官方收藏」：content script 同源 fetch 官方端点（cookie 鉴权）。
+      void handleFavoriteRequest({
+        cookie: document.cookie,
+        fetchImpl: (url) => fetch(url, { credentials: 'include' }),
+      }).then((result) => {
+        // 扩展重载后 sendResponse 可能同步抛「Extension context invalidated」，
+        // 在此兜住避免 unhandled rejection（SW 侧 sendToTab reject 已兜底 DELIVERY_FAILED）。
+        try {
+          sendResponse(result);
+        } catch {
+          /* 上下文已失效，忽略 */
+        }
+      });
+      return true; // 异步回包
     }
     return false; // 同步回包
   });

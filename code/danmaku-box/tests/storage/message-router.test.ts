@@ -417,3 +417,66 @@ describe('EXPORT_BACKUP / IMPORT_BACKUP / GET_DIAG', () => {
     assert.ok(data !== undefined && 'diagnostics' in data);
   });
 });
+// GET_DOUYU_FAVORITE：路由到活动 douyu tab 的 content script 并透传结果。
+describe('官方收藏路由', () => {
+  function routerWithTab(tab: TabContext) {
+    const area = new MemoryArea();
+    const storage = createStorageService(area);
+    const settings = createSettingsService(storage);
+    return createDanmakuStore(storage).then((store) =>
+      createMessageRouter({ store, settings, tab }),
+    );
+  }
+
+  it('活动 tab 为 douyu：下发 GET_DOUYU_FAVORITE 并透传 items', async () => {
+    const tab = {
+      getActiveTab: async () => ({ tabId: 1, url: 'https://www.douyu.com/1' }),
+      getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
+      sendToTab: async () => ({ ok: true, data: { items: [{ content: 'a' }] } }),
+    };
+    const router = await routerWithTab(tab);
+    const r = await router.handleMessage(msg(MESSAGES.GET_DOUYU_FAVORITE));
+    assert.equal(r?.ok, true);
+    assert.deepEqual((r?.data as { items: Array<{ content: string }> }).items, [{ content: 'a' }]);
+  });
+
+  it('活动 tab 非 douyu：返回 SITE_UNSUPPORTED 且不下发', async () => {
+    let sent = false;
+    const tab = {
+      getActiveTab: async () => ({ tabId: 1, url: 'https://example.com' }),
+      getTabSite: async () => ({ site: 'douyin', status: 'ok' }),
+      sendToTab: async () => {
+        sent = true;
+        return undefined;
+      },
+    };
+    const router = await routerWithTab(tab);
+    const r = await router.handleMessage(msg(MESSAGES.GET_DOUYU_FAVORITE));
+    assert.equal(r?.ok, false);
+    assert.equal(r?.error?.code, ERROR_CODES.SITE_UNSUPPORTED);
+    assert.equal(sent, false);
+  });
+
+  it('content 回包错误：透传错误码（未登录）', async () => {
+    const tab = {
+      getActiveTab: async () => ({ tabId: 1, url: 'https://www.douyu.com/1' }),
+      getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
+      sendToTab: async () => ({ ok: false, error: { code: 'NOT_LOGGED_IN', message: 'no-login' } }),
+    };
+    const router = await routerWithTab(tab);
+    const r = await router.handleMessage(msg(MESSAGES.GET_DOUYU_FAVORITE));
+    assert.equal(r?.ok, false);
+    assert.equal(r?.error?.code, 'NOT_LOGGED_IN');
+  });
+
+  it('IMPORT_FAVORITE_DANMAKU 批量导入并返回 added', async () => {
+    const { router } = await makeRouter();
+    const created = await router.handleMessage(msg(MESSAGES.CREATE_GROUP, { name: '斗鱼官收' }));
+    const gid = (created?.data as { group: { id: string } }).group.id;
+    const r = await router.handleMessage(
+      msg(MESSAGES.IMPORT_FAVORITE_DANMAKU, { entries: [{ content: 'x' }], groupId: gid }),
+    );
+    assert.equal(r?.ok, true);
+    assert.deepEqual(r?.data, { added: 1, skipped: 0, invalid: 0 });
+  });
+});

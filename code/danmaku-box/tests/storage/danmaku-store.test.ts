@@ -542,7 +542,7 @@ describe('getGroupsWithCounts（面板分组导航计数）', () => {
   });
 });
 
-// importFavoriteDanmaku：批量导入官方收藏到目标分组（组内去重，一次落盘）。
+// importFavoriteDanmaku：批量导入收藏弹幕到目标分组（组内去重，一次落盘）。
 
 describe('DanmakuStore.importFavoriteDanmaku', () => {
   async function setup() {
@@ -555,7 +555,10 @@ describe('DanmakuStore.importFavoriteDanmaku', () => {
   it('批量写入并返回 added，平台标记 douyu', async () => {
     const { store, groupId } = await setup();
     const r = await store.importFavoriteDanmaku([{ content: 'aaa' }, { content: 'bbb' }], groupId);
-    assert.deepEqual({ added: r.added, skipped: r.skipped, invalid: r.invalid }, { added: 2, skipped: 0, invalid: 0 });
+    assert.deepEqual(
+      { added: r.added, skipped: r.skipped, invalid: r.invalid },
+      { added: 2, skipped: 0, invalid: 0 },
+    );
     const list = await store.listDanmaku({ groupId });
     assert.equal(list.total, 2);
     assert.equal(list.items[0]?.platform, 'douyu');
@@ -583,5 +586,23 @@ describe('DanmakuStore.importFavoriteDanmaku', () => {
       () => store.importFavoriteDanmaku([{ content: 'a' }], 'g_not_exist'),
       (err: { code?: string }) => err.code === 'NOT_FOUND',
     );
+  });
+
+  it('全 invalid 时零落盘（守卫 batch.length>0 生效）', async () => {
+    const { store, groupId } = await setup();
+    const r = await store.importFavoriteDanmaku(
+      [{ content: '' }, { content: 'a'.repeat(DANMAKU_MAX_LENGTH + 1) }],
+      groupId,
+    );
+    assert.deepEqual({ added: r.added, invalid: r.invalid }, { added: 0, invalid: 2 });
+    assert.equal((await store.listDanmaku({ groupId })).total, 0);
+  });
+
+  it('全 skipped 时零落盘，总量不变', async () => {
+    const { store, groupId } = await setup();
+    await store.importFavoriteDanmaku([{ content: '已有' }], groupId);
+    const r = await store.importFavoriteDanmaku([{ content: '已有' }], groupId);
+    assert.deepEqual({ added: r.added, skipped: r.skipped }, { added: 0, skipped: 1 });
+    assert.equal((await store.listDanmaku({ groupId })).total, 1);
   });
 });
