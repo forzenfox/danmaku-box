@@ -47,3 +47,10 @@ export interface CsReadyPayload {
   site: 'douyu' | 'douyin';
   status: string;
 }
+
+/** 斗鱼官方云端收藏条目（japi/privateCustomApi/favorite/web/bulletscreen/query 响应 data.list 项） */
+export interface FavoriteItem {
+  content: string;
+  type?: number;
+  id?: number;
+}

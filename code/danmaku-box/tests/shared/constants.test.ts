@@ -79,6 +79,7 @@ describe('错误码常量（技术方案 5.2）', () => {
       DELIVERY_FAILED: 'DELIVERY_FAILED',
       BAD_FORMAT: 'BAD_FORMAT',
       MIGRATE_FAILED: 'MIGRATE_FAILED',
+      SOURCE_UNAVAILABLE: 'SOURCE_UNAVAILABLE',
     });
   });
 });
