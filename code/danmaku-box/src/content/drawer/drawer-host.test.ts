@@ -3,8 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createDrawerHost,
-  defaultMeasureWidth,
+  defaultMeasureRect,
   DRAWER_STYLES,
+  type DrawerRect,
   type DrawerSessionState,
 } from './drawer-host.ts';
 
@@ -89,7 +90,7 @@ interface FakeEl {
   shadowMode: string | null;
   children: unknown[];
   removed: boolean;
-  style: { width?: string };
+  style: Record<string, string | undefined>;
   textContent: string;
   className: string;
   classList: {
@@ -220,54 +221,209 @@ test('Shadow 使用 open 模式（自动化走查可穿透访问把手/iframe）
   );
 });
 
-test('动态宽度（默认测量器）：用布局视口 clientWidth 而非 innerWidth（滚动条 15px 不误遮视频）', () => {
+test('defaultMeasureRect（生产态）：用布局视口 clientWidth 而非 innerWidth（滚动条 15px 不误遮视频），回退 video 时亦成立', () => {
   // 模拟真实页面：视口 1864（含 15px 滚动条）、布局视口 clientWidth=1849、视频右缘 1309
-  const videoEl = {
-    getBoundingClientRect: () => ({
-      right: 1309,
-      width: 1157,
-      height: 544,
-      left: 152,
-      top: 124,
-      bottom: 668,
-    }),
-  };
+  const videoEl = rectEl({ left: 152, top: 224, width: 1157, height: 637, right: 1309 });
+  const barrageEl = rectEl({ left: 1317, top: 376, width: 380, height: 503, right: 1697 });
   const nativeDoc = {
-    querySelector: (sel: string) => (sel === '#js-player-video' ? videoEl : null),
+    querySelector: (sel: string) =>
+      sel === '#js-player-barrage' ? barrageEl : sel === '#js-player-video' ? videoEl : null,
     documentElement: { clientWidth: 1849 },
   };
-  const fakeWin = { innerWidth: 1864 } as unknown as Window;
-  const measure = defaultMeasureWidth(nativeDoc as unknown as Document, fakeWin);
-  // 抽屉右缘固定定位 right:0 对齐 clientWidth（1849）右缘 → 宽度应为 1849 - 1309 = 540
-  assert.equal(measure(), 540);
+  const fakeWin = { innerWidth: 1864, innerHeight: 893 } as unknown as Window;
+  const measure = defaultMeasureRect(nativeDoc as unknown as Document, fakeWin);
+  const result = measure();
+  assert.ok(result, '命中弹幕栏不应为 null');
+  assert.equal(
+    result!.width,
+    1849 - 1317,
+    '宽度用 clientWidth(1849) 而非 innerWidth(1864)：可避免 15px 滚动条误遮',
+  );
+  assert.equal(result!.left, 1317, '左缘对齐弹幕栏左缘');
+  assert.equal(result!.top, 376, '顶部取弹幕区视口 top');
 });
 
-test('动态宽度：measureWidth 返回 495 时内联样式 width=495px', () => {
+// ── V4：矩形定位应用（measureRect 注入 + 内联 left/top/width/height + scroll 跟随） ──
+
+function fakeRect(): DrawerRect {
+  return { left: 1317, top: 376, width: 532, height: 503 };
+}
+
+test('矩形定位：measureRect 返回矩形时内联 left/top/width/height 全部写入 px', () => {
   const { doc, created } = makeFakeDoc();
   const host = createDrawerHost({
     doc,
     getURL: () => '',
     session: null,
-    measureWidth: () => 495,
+    measureRect: () => fakeRect(),
   });
   host.mount();
   const wrap = created.find((e) => e.className.includes('drawer-host'));
   assert.ok(wrap, '应存在 .drawer-host 容器');
-  assert.equal(wrap!.style.width, '495px');
+  assert.equal(wrap!.style.left, '1317px');
+  assert.equal(wrap!.style.top, '376px');
+  assert.equal(wrap!.style.width, '532px');
+  assert.equal(wrap!.style.height, '503px');
 });
 
-test('动态宽度：measureWidth 返回 null 时回退 CSS 兜底（不设内联宽度）', () => {
+test('矩形定位：measureRect 返回 null 时回退 CSS 兜底（清空全部内联几何）', () => {
   const { doc, created } = makeFakeDoc();
   const host = createDrawerHost({
     doc,
     getURL: () => '',
     session: null,
-    measureWidth: () => null,
+    measureRect: () => null,
   });
   host.mount();
   const wrap = created.find((e) => e.className.includes('drawer-host'));
   assert.ok(wrap, '应存在 .drawer-host 容器');
   assert.ok(!wrap!.style.width, '测量失败时清除内联宽度（回退 CSS 兜底）');
+  assert.ok(!wrap!.style.left && !wrap!.style.top, '测量失败时清除内联 left/top（回退 CSS 兜底）');
+  assert.ok(!wrap!.style.height, '测量失败时清除内联 height（回退 CSS 兜底）');
+});
+
+test('矩形定位：scroll 事件触发后按最新 measureRect 重算（弹幕区随页面滚动移动）', () => {
+  const { doc, created } = makeFakeDoc();
+  const listeners: Record<string, () => void> = {};
+  const fakeWin = {
+    document: { fullscreenElement: null as Element | null },
+    addEventListener: (t: string, fn: () => void, opts?: unknown) => {
+      listeners[t] = fn;
+      assert.ok(
+        opts == null || (opts as { passive?: boolean }).passive === true,
+        'scroll 监听应为 passive',
+      );
+    },
+    removeEventListener: () => {},
+  };
+  const tops = [376, 310];
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session: null,
+    win: fakeWin as unknown as Window,
+    measureRect: () => ({ ...fakeRect(), top: tops.shift() ?? 310 }),
+  });
+  host.mount();
+  const onScroll = listeners['scroll'];
+  assert.ok(onScroll, 'mount 后应注册 scroll 监听');
+  // 首次测量 top=376
+  let wrap = created.find((e) => e.className.includes('drawer-host'))!;
+  assert.equal(wrap.style.top, '376px');
+  // 页面滚动后弹幕区视口 top 变化 → scroll 重算
+  onScroll();
+  wrap = created.find((e) => e.className.includes('drawer-host'))!;
+  assert.equal(wrap.style.top, '310px', 'scroll 后按最新测量重算 top');
+});
+
+test('矩形定位：resize 事件触发后按最新 measureRect 重算', () => {
+  const { doc, created } = makeFakeDoc();
+  const listeners: Record<string, () => void> = {};
+  const fakeWin = {
+    document: { fullscreenElement: null as Element | null },
+    addEventListener: (t: string, fn: () => void) => {
+      listeners[t] = fn;
+    },
+    removeEventListener: () => {},
+  };
+  const widths = [532, 600];
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session: null,
+    win: fakeWin as unknown as Window,
+    measureRect: () => ({ ...fakeRect(), width: widths.shift() ?? 600 }),
+  });
+  host.mount();
+  let wrap = created.find((e) => e.className.includes('drawer-host'))!;
+  assert.equal(wrap.style.width, '532px', 'mount 即按首测宽度设置');
+  const onResize = listeners['resize'];
+  assert.ok(onResize, 'mount 后应注册 resize 监听');
+  onResize();
+  wrap = created.find((e) => e.className.includes('drawer-host'))!;
+  assert.equal(wrap.style.width, '600px', 'resize 后按新测量重算宽度');
+});
+
+test('矩形定位：fullscreenchange 触发后重算（全屏切换改变弹幕区几何）', () => {
+  const { doc, created } = makeFakeDoc();
+  const listeners: Record<string, () => void> = {};
+  const fakeWin = {
+    document: { fullscreenElement: null as Element | null },
+    addEventListener: (t: string, fn: () => void) => {
+      listeners[t] = fn;
+    },
+    removeEventListener: () => {},
+  };
+  let cur = 532;
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session: null,
+    win: fakeWin as unknown as Window,
+    measureRect: () => ({ ...fakeRect(), width: cur }),
+  });
+  host.mount();
+  let wrap = created.find((e) => e.className.includes('drawer-host'))!;
+  assert.equal(wrap.style.width, '532px');
+  cur = 600;
+  const onFullscreenChange = listeners['fullscreenchange'];
+  assert.ok(onFullscreenChange, 'mount 后应注册 fullscreenchange 监听');
+  fakeWin.document.fullscreenElement = {} as Element;
+  onFullscreenChange();
+  wrap = created.find((e) => e.className.includes('drawer-host'))!;
+  assert.equal(wrap.style.width, '600px', '全屏切换后应按最新测量重算宽度');
+});
+
+test('矩形定位：dispose 后移除 scroll/resize/fullscreenchange 监听', () => {
+  const { doc } = makeFakeDoc();
+  const removed: string[] = [];
+  const fakeWin = {
+    document: { fullscreenElement: null as Element | null },
+    addEventListener: () => {},
+    removeEventListener: (t: string) => {
+      removed.push(t);
+    },
+  };
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session: null,
+    win: fakeWin as unknown as Window,
+    measureRect: () => fakeRect(),
+  });
+  host.mount();
+  host.dispose();
+  assert.ok(removed.includes('resize'), 'dispose 应移除 resize 监听');
+  assert.ok(removed.includes('scroll'), 'dispose 应移除 scroll 监听');
+  assert.ok(removed.includes('fullscreenchange'), 'dispose 应移除 fullscreenchange 监听');
+});
+
+test('矩形定位：已展开抽屉的 scroll 事件触发应重新计算矩形（遮盖不漂移）', () => {
+  // 契约：无论 open 与否，scroll 均重算几何（弹幕区随滚动移动，展开中的抽屉必须跟随）
+  const { doc, created } = makeFakeDoc();
+  const listeners: Record<string, () => void> = {};
+  const fakeWin = {
+    document: { fullscreenElement: null as Element | null },
+    addEventListener: (t: string, fn: () => void) => {
+      listeners[t] = fn;
+    },
+    removeEventListener: () => {},
+  };
+  const tops = [376, 300, 220];
+  const host = createDrawerHost({
+    doc,
+    getURL: () => '',
+    session: null,
+    win: fakeWin as unknown as Window,
+    measureRect: () => ({ ...fakeRect(), top: tops.shift() ?? 220 }),
+  });
+  host.mount();
+  host.toggle(); // 展开
+  const onScroll = listeners['scroll']!;
+  onScroll();
+  onScroll();
+  const wrap = created.find((e) => e.className.includes('drawer-host'))!;
+  assert.equal(wrap.style.top, '220px', '展开态滚动两次应跟随最新弹幕区 top');
 });
 
 test('DRAWER_STYLES 区分开合状态图标（把手不再恒为倒三角）', () => {
@@ -305,87 +461,6 @@ test('把手不再渲染固定 ▼ 文本（图标交由 CSS ::before 按开合�
     !handle!.textContent.includes('▼'),
     '把手文本不再固定为倒三角 ▼（应清空，由 ::before 呈现状态图标）',
   );
-});
-
-test('动态宽度：resize 事件触发后按最新 measureWidth 重算', () => {
-  const { doc, created } = makeFakeDoc();
-  const listeners: Record<string, () => void> = {};
-  const fakeWin = {
-    document: { fullscreenElement: null as Element | null },
-    addEventListener: (t: string, fn: () => void) => {
-      listeners[t] = fn;
-    },
-    removeEventListener: () => {},
-  };
-  const sizes = [495, 572];
-  const host = createDrawerHost({
-    doc,
-    getURL: () => '',
-    session: null,
-    win: fakeWin as unknown as Window,
-    measureWidth: () => sizes.shift() ?? 572,
-  });
-  host.mount();
-  let wrap = created.find((e) => e.className.includes('drawer-host'))!;
-  assert.equal(wrap.style.width, '495px', 'mount 即按首测宽度设置');
-  const onResize = listeners['resize'];
-  assert.ok(onResize, 'mount 后应注册 resize 监听');
-  onResize();
-  wrap = created.find((e) => e.className.includes('drawer-host'))!;
-  assert.equal(wrap.style.width, '572px', 'resize 后按新测量重算宽度');
-});
-
-test('动态宽度：fullscreenchange 触发后重算', () => {
-  const { doc, created } = makeFakeDoc();
-  const listeners: Record<string, () => void> = {};
-  const fakeWin = {
-    document: { fullscreenElement: null as Element | null },
-    addEventListener: (t: string, fn: () => void) => {
-      listeners[t] = fn;
-    },
-    removeEventListener: () => {},
-  };
-  let cur = 495;
-  const host = createDrawerHost({
-    doc,
-    getURL: () => '',
-    session: null,
-    win: fakeWin as unknown as Window,
-    measureWidth: () => cur,
-  });
-  host.mount();
-  let wrap = created.find((e) => e.className.includes('drawer-host'))!;
-  assert.equal(wrap.style.width, '495px');
-  cur = 572;
-  const onFullscreenChange = listeners['fullscreenchange'];
-  assert.ok(onFullscreenChange, 'mount 后应注册 fullscreenchange 监听');
-  fakeWin.document.fullscreenElement = {} as Element;
-  onFullscreenChange();
-  wrap = created.find((e) => e.className.includes('drawer-host'))!;
-  assert.equal(wrap.style.width, '572px', '全屏切换后应按最新测量重算宽度');
-});
-
-test('动态宽度：dispose 后移除 resize 监听', () => {
-  const { doc } = makeFakeDoc();
-  const removed: string[] = [];
-  const fakeWin = {
-    document: { fullscreenElement: null as Element | null },
-    addEventListener: () => {},
-    removeEventListener: (t: string) => {
-      removed.push(t);
-    },
-  };
-  const host = createDrawerHost({
-    doc,
-    getURL: () => '',
-    session: null,
-    win: fakeWin as unknown as Window,
-    measureWidth: () => 495,
-  });
-  host.mount();
-  host.dispose();
-  assert.ok(removed.includes('resize'), 'dispose 应移除 resize 监听');
-  assert.ok(removed.includes('fullscreenchange'), 'dispose 应移除 fullscreenchange 监听');
 });
 
 test('hide() 收起并写回会话关闭态', async () => {
@@ -483,4 +558,77 @@ test('退出全屏恢复打开时会话同步写回 open:true', async () => {
   await Promise.resolve(); // 等 persist 落库（session.set 真异步）
   assert.equal(host.isOpen(), true);
   assert.equal(saved!['drawer.ui']!.open, true, '会话态应跟随内存态写回 open:true');
+});
+
+// ── V4：defaultMeasureRect 契约（锚定弹幕列表显示区域几何，spec V4 §6） ──────
+
+/** 构造最小锚点元素：getBoundingClientRect 返回指定几何 */
+function rectEl(rect: { left: number; top: number; width: number; height: number; right: number }) {
+  return { getBoundingClientRect: () => rect };
+}
+
+test('defaultMeasureRect：命中 #js-player-barrage（弹幕栏容器）返回完整几何（左缘对齐弹幕区、右缘贴齐视口、高=min(弹幕区,62vh,560)）', () => {
+  // 实测样例：视口 1849×893，弹幕区 left 1317 / top 376 / 380×503（scrollY=0）
+  const barrage = rectEl({ left: 1317, top: 376, width: 380, height: 503, right: 1697 });
+  const video = rectEl({ left: 152, top: 224, width: 1157, height: 637, right: 1309 });
+  const nativeDoc = {
+    querySelector: (sel: string) =>
+      sel === '#js-player-barrage' ? barrage : sel === '#js-player-video' ? video : null,
+    documentElement: { clientWidth: 1849 },
+  };
+  const fakeWin = { innerHeight: 893 } as unknown as Window;
+  const measure = defaultMeasureRect(nativeDoc as unknown as Document, fakeWin);
+  assert.deepEqual(measure(), {
+    left: 1317,
+    top: 376,
+    width: 1849 - 1317, // 532：右缘贴齐布局视口右缘（不遮弹幕栏右缘→视口右缘之间的空隙，详见 spec V4 §3-1）
+    height: 503, // min(503, 62vh≈553.7, 560)
+  });
+});
+
+test('defaultMeasureRect：无弹幕栏时回退 #js-player-video（left=播放器右缘、高取 62vh/560 约束）', () => {
+  const video = rectEl({ left: 152, top: 224, width: 1157, height: 637, right: 1309 });
+  const nativeDoc = {
+    querySelector: (sel: string) => (sel === '#js-player-video' ? video : null),
+    documentElement: { clientWidth: 1849 },
+  };
+  const fakeWin = { innerHeight: 893 } as unknown as Window;
+  const measure = defaultMeasureRect(nativeDoc as unknown as Document, fakeWin);
+  const result = measure();
+  assert.ok(result, '回退 video 不应为 null');
+  assert.equal(result!.left, 1309, '左缘 = 播放器右缘');
+  assert.equal(result!.top, 224, '顶部跟随播放器顶部');
+  assert.equal(result!.width, 540, '右缘贴齐视口：1849 − 1309');
+  assert.equal(result!.height, Math.round(893 * 0.62), '无弹幕区高度参考用 62vh（< 560）');
+});
+
+test('defaultMeasureRect：无任何锚点返回 null（回退 CSS 兜底）', () => {
+  const nativeDoc = {
+    querySelector: () => null,
+    documentElement: { clientWidth: 1849 },
+  };
+  const fakeWin = { innerHeight: 893 } as unknown as Window;
+  const measure = defaultMeasureRect(nativeDoc as unknown as Document, fakeWin);
+  assert.equal(measure(), null);
+});
+
+test('defaultMeasureRect：视口不可用（view=null）返回 null', () => {
+  const barrage = rectEl({ left: 1317, top: 376, width: 380, height: 503, right: 1697 });
+  const nativeDoc = {
+    querySelector: () => barrage,
+    documentElement: { clientWidth: 1849 },
+  } as unknown as Document;
+  const measure = defaultMeasureRect(nativeDoc, null);
+  assert.equal(measure(), null);
+});
+
+test('defaultMeasureRect：宽度非正（弹幕区左缘越过且视口过窄）返回 null', () => {
+  const barrage = rectEl({ left: 1900, top: 376, width: 380, height: 503, right: 2280 });
+  const nativeDoc = {
+    querySelector: () => barrage,
+    documentElement: { clientWidth: 1849 },
+  };
+  const fakeWin = { innerHeight: 893 } as unknown as Window;
+  const measure = defaultMeasureRect(nativeDoc as unknown as Document, fakeWin);
+  assert.equal(measure(), null);
 });

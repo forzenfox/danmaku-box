@@ -73,8 +73,8 @@ export interface DrawerHostDeps {
   sessionKey?: string;
   /** 视口/全屏事件源（测试注入，默认 window；测试环境为 null 时跳过监听） */
   win?: Window;
-  /** 动态宽度测量器：返回抽屉应占的像素宽度；null=测量失败（回退 CSS 兜底、不改内联样式） */
-  measureWidth?: () => number | null;
+  /** 动态几何测量器：返回抽屉应占的矩形（像素，left/top 为视口坐标）；null=测量失败（回退 CSS 兜底、不改内联样式） */
+  measureRect?: () => DrawerRect | null;
 }
 
 export interface DrawerHost {
@@ -96,17 +96,23 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
   let root: HTMLElement | null = null;
   let shadowHost: HTMLElement | null = null; // shadow 宿主（build 时备份，dispose 根除）
   const view = deps.win ?? (typeof window !== 'undefined' ? window : null);
-  // 动态宽度测量器：缺省时按「视口宽 − 视频区域右缘」实时测量（视频锚点：js-player-video / video）
-  const measureWidth = deps.measureWidth ?? defaultMeasureWidth(doc, view);
+  // 动态几何测量器：缺省时按「#js-player-barrage → #js-player-video → video」链实时测量矩形
+  const measureRect = deps.measureRect ?? defaultMeasureRect(doc, view);
 
-  /** 按测量结果写内联宽度；null（测量失败）则清除内联样式，回退 CSS 兜底宽度 */
-  function applyWidth(): void {
+  /** 按测量结果写内联 left/top/width/height；null（测量失败）则清除全部四个内联，回退 CSS 兜底 */
+  function applyRect(): void {
     if (!root) return;
-    const width = measureWidth();
-    if (width !== null && width > 0) {
-      root.style.width = `${width}px`;
+    const rect = measureRect();
+    if (rect) {
+      root.style.left = `${rect.left}px`;
+      root.style.top = `${rect.top}px`;
+      root.style.width = `${rect.width}px`;
+      root.style.height = `${rect.height}px`;
     } else {
+      root.style.left = '';
+      root.style.top = '';
       root.style.width = '';
+      root.style.height = '';
     }
   }
 
@@ -131,13 +137,16 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
   const onFullscreen = () => {
     if (!view) return;
     applyOpen(view.document.fullscreenElement ? false : lastOpen);
-    applyWidth(); // 全屏切换改变浏览区布局，视频右缘随之变化，重算抽屉宽度
+    applyRect(); // 全屏切换改变浏览区布局，弹幕区几何随之变化，重算抽屉矩形
     // 退出全屏恢复为打开（lastOpen=true）时，同步会话态于内存态，消除歧见（R1）
     if (!view.document.fullscreenElement && lastOpen) persist();
   };
 
-  // resize：窗口尺寸变化 → 视频右缘随之变化，重算抽屉宽度
-  const onResize = () => applyWidth();
+  // resize：窗口尺寸变化 → 弹幕区几何随之变化，重算抽屉矩形
+  const onResize = () => applyRect();
+
+  // scroll：页面滚动 → 弹幕区视口 top 平移（弹幕区随文档滚动移动，fixed 抽屉需跟随）
+  const onScroll = () => applyRect();
 
   function build(): void {
     // Shadow 宿主容器
@@ -185,9 +194,10 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
     if (mounted) return;
     mounted = true;
     build();
-    applyWidth(); // 首帧按当前视口/视频布局设置抽屉宽度
+    applyRect(); // 首帧按当前视口/弹幕区布局设置抽屉矩形
     view?.addEventListener('fullscreenchange', onFullscreen);
     view?.addEventListener('resize', onResize);
+    view?.addEventListener('scroll', onScroll, { passive: true });
   }
 
   function toggle(): void {
@@ -204,6 +214,7 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
   function dispose(): void {
     view?.removeEventListener('fullscreenchange', onFullscreen);
     view?.removeEventListener('resize', onResize);
+    view?.removeEventListener('scroll', onScroll);
     shadowHost?.remove(); // shadow 宿主（子树随宿主一并移除）
     root = null;
     shadowHost = null;
@@ -213,23 +224,46 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
   return { mount, toggle, hide, isOpen: () => open, dispose };
 }
 
-/** 默认动态宽度测量器（生产态）：抽屉宽度 = 布局视口宽 − 视频区域右缘。
- * 用 clientWidth（布局视口，不含滚动条）而非 innerWidth：抽屉 fixed right:0 的右缘
- * 对齐的是布局视口右缘（clientWidth），用 innerWidth 会把滚动条 15px 也算进宽度，
- * 导致抽屉左缘越界遮挡视频右缘（走查实测差 15px）。
- * 视频锚点：#js-player-video（斗鱼播放器容器），回退 video 标签；
- * 找不到视频区域或视口不可用时返回 null（由调用方回退 CSS 兜底宽度）。 */
-export function defaultMeasureWidth(doc: Document, view: Window | null): () => number | null {
+// ── 默认动态几何测量器（生产态） ─────────────────────────────────────────
+
+/** 抽屉几何：左缘/顶缘为视口坐标，宽/高为像素尺寸。 */
+export interface DrawerRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** 默认动态几何测量器（生产态，V4）：抽屉矩形 = 实际弹幕列表显示区域。
+ * 左缘对齐弹幕栏容器 #js-player-barrage 的左缘（播放器右缘 + 8px margin 的正式位置），
+ * 宽到布局视口右缘（clientWidth，滚动条结论：用 clientWidth 而非 innerWidth——抽屉 fixed 右缘
+ * 对齐的是布局视口右缘，用 innerWidth 会把 15px 滚动条也算进宽度，导致抽屉左缘越界遮挡视频右缘，
+ * 走查实测差 15px），
+ * 顶部取弹幕区当前视口 top（getBoundingClientRect 天然包含滚动态，随 scroll 事件重算），
+ * 高 = min(弹幕区高, 62vh, 560px)（V2 高度约束保留：弹幕区 503 < 62vh≈553 时取 503 完美遮蔽；
+ * 异常超高仍受 62vh/560 保护，不遮输入框）。
+ * 弹幕栏缺失时回退 #js-player-video / video：左缘=播放器右缘、高取 62vh/560（无弹幕区高度参考）。
+ * 全部测量失败返回 null（由调用方回退 CSS 兜底 top:0/right:0/width:min(340px,22vw)）。 */
+export function defaultMeasureRect(doc: Document, view: Window | null): () => DrawerRect | null {
   return () => {
     if (!view) return null;
-    // 防御：测试用 fake doc 无 querySelector 时视为测量失败（回退 CSS 兜底）
     if (typeof doc.querySelector !== 'function') return null;
-    const anchor = doc.querySelector('#js-player-video') ?? doc.querySelector('video');
-    if (!anchor) return null;
-    const right = anchor.getBoundingClientRect().right;
     const clientWidth = doc.documentElement?.clientWidth;
-    if (!Number.isFinite(right) || right <= 0 || !Number.isFinite(clientWidth)) return null;
-    const width = Math.round(clientWidth - right);
-    return width > 0 ? width : null;
+    if (!Number.isFinite(clientWidth)) return null;
+    const barrage = doc.querySelector('#js-player-barrage');
+    const fallback = doc.querySelector('#js-player-video') ?? doc.querySelector('video');
+    if (barrage) {
+      const rect = barrage.getBoundingClientRect();
+      const width = Math.round(clientWidth - rect.left);
+      const height = Math.round(Math.min(rect.height, view.innerHeight * 0.62, 560));
+      if (!Number.isFinite(rect.left) || width <= 0 || height <= 0) return null;
+      return { left: Math.round(rect.left), top: Math.round(rect.top), width, height };
+    }
+    if (!fallback) return null;
+    const rect = fallback.getBoundingClientRect();
+    const width = Math.round(clientWidth - rect.right);
+    const height = Math.round(Math.min(view.innerHeight * 0.62, 560));
+    if (!Number.isFinite(rect.right) || width <= 0 || height <= 0) return null;
+    return { left: Math.round(rect.right), top: Math.round(rect.top), width, height };
   };
 }
