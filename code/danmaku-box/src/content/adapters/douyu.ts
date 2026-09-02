@@ -22,6 +22,12 @@ export function createDouyuAdapter(): SiteAdapter {
   return {
     site: 'douyu',
 
+    isLiveRoom(location: Pick<Location, 'pathname'>): boolean {
+      // 直播间 URL 形如 /1126960（首段纯数字）；首页/分类目录/个人页/专题页均非直播间
+      const seg = location.pathname.split('/').filter(Boolean)[0] ?? '';
+      return /^\d+$/.test(seg);
+    },
+
     probe(root: Document | HTMLElement): ProbeResult {
       // A：回填仅依赖输入框（必需锚点）；弹幕列表随 WebSocket 首条消息延迟渲染
       // （实测约 9s），列为可选锚点——缺失仅记录，不影响适配判定。

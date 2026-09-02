@@ -23,6 +23,8 @@ export interface FillResult {
 
 export interface SiteAdapter {
   readonly site: 'douyu' | 'douyin';
+  /** 页面是否为直播间 URL（非直播页不挂载 content script 能力，如抽屉把手/右键菜单） */
+  isLiveRoom(location: Pick<Location, 'pathname'>): boolean;
   probe(root: Document | HTMLElement): ProbeResult;
   /** 从事件目标定位弹幕条目元素；非弹幕区域返回 null（不拦截原生菜单） */
   findDanmakuItem(target: Element): Element | null;

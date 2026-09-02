@@ -35,3 +35,26 @@ describe('DouyuAdapter.probe 锚点语义', () => {
     assert.deepEqual(probe.missing, [INPUT, LIST]);
   });
 });
+
+describe('DouyuAdapter.isLiveRoom 直播间 URL 判定（走查反馈：非直播页不挂载抽屉把手）', () => {
+  const loc = (pathname: string) => ({ pathname }) as Location;
+
+  it('纯数字首段 = 直播间（如 /1126960）', () => {
+    assert.equal(createDouyuAdapter().isLiveRoom(loc('/1126960')), true);
+  });
+
+  it('非直播间 URL 返回 false（首页/目录/个人页/topic）', () => {
+    assert.equal(createDouyuAdapter().isLiveRoom(loc('/')), false, '首页不应判定为直播间');
+    assert.equal(createDouyuAdapter().isLiveRoom(loc('/g_yz')), false, '分类目录不应判定');
+    assert.equal(
+      createDouyuAdapter().isLiveRoom(loc('/hermes/b8mceqskr0xzv')),
+      false,
+      '个人页不应判定',
+    );
+    assert.equal(
+      createDouyuAdapter().isLiveRoom(loc('/topic/jdqs3/1.shtml')),
+      false,
+      '专题页不应判定',
+    );
+  });
+});

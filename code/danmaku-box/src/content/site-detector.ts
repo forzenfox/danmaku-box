@@ -21,11 +21,14 @@ export function createSiteDetector(adapters: { douyu: SiteAdapter; douyin?: Site
       const host = location.hostname;
       if (/(^|\.)douyu\.com$/.test(host)) {
         const adapter = adapters.douyu;
+        // 非直播间 URL（首页/目录/个人页等）不挂载任何 content script 能力（走查反馈修复）
+        if (!adapter.isLiveRoom(location)) return null;
         const probe = adapter.probe(root);
         return { site: 'douyu', status: probe.ok ? 'ok' : 'adapter_down', adapter };
       }
       if (/(^|\.)douyin\.com$/.test(host) && adapters.douyin) {
         const adapter = adapters.douyin;
+        if (!adapter.isLiveRoom(location)) return null;
         const probe = adapter.probe(root);
         return { site: 'douyin', status: probe.ok ? 'ok' : 'adapter_down', adapter };
       }
