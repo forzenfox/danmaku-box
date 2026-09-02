@@ -17,7 +17,7 @@ import {
 // 6.2 节实体约束、PRD V1.2 字段规则完全一致。
 
 describe('消息协议常量（技术方案 5.2）', () => {
-  it('包含全部 23 个消息名且值稳定', () => {
+  it('包含全部 25 个消息名且值稳定', () => {
     assert.deepStrictEqual(MESSAGES, {
       CS_READY: 'CS_READY',
       GET_MENU_CONTEXT: 'GET_MENU_CONTEXT',
@@ -43,6 +43,8 @@ describe('消息协议常量（技术方案 5.2）', () => {
       GET_DIAG: 'GET_DIAG',
       PANEL_OPENED: 'PANEL_OPENED',
       PANEL_CLOSED: 'PANEL_CLOSED',
+      GET_DOUYU_FAVORITE: 'GET_DOUYU_FAVORITE',
+      IMPORT_FAVORITE_DANMAKU: 'IMPORT_FAVORITE_DANMAKU',
     });
   });
 });
@@ -60,7 +62,7 @@ describe('存储 key 常量（技术方案 6.3）', () => {
 });
 
 describe('错误码常量（技术方案 5.2）', () => {
-  it('包含全部 17 个稳定错误码', () => {
+  it('包含全部 18 个稳定错误码', () => {
     assert.deepStrictEqual(ERROR_CODES, {
       STORAGE_FULL: 'STORAGE_FULL',
       INVALID_CONTENT: 'INVALID_CONTENT',

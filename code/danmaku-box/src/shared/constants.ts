@@ -27,6 +27,8 @@ export const MESSAGES = {
   GET_DIAG: 'GET_DIAG',
   PANEL_OPENED: 'PANEL_OPENED',
   PANEL_CLOSED: 'PANEL_CLOSED',
+  GET_DOUYU_FAVORITE: 'GET_DOUYU_FAVORITE',
+  IMPORT_FAVORITE_DANMAKU: 'IMPORT_FAVORITE_DANMAKU',
 } as const;
 
 /** 存储 key（技术方案 6.3，共 5 个） */
@@ -38,7 +40,7 @@ export const STORAGE_KEYS = {
   schemaVersion: 'meta.schemaVersion',
 } as const;
 
-/** 稳定错误码（技术方案 5.2，共 17 个） */
+/** 稳定错误码（技术方案 5.2，共 18 个） */
 export const ERROR_CODES = {
   STORAGE_FULL: 'STORAGE_FULL',
   INVALID_CONTENT: 'INVALID_CONTENT',
