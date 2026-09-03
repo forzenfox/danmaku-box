@@ -58,6 +58,14 @@
   margin-top: 2px;
 }
 
+/* 标签文本：显式继承 .dk-radio 的色值与字号，防止外部 reset 隐藏
+   （2026-09-03 实测：未带 class 的 span 在 panel 内被覆盖为不可见色） */
+.dk-radio-label {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
 .dk-modal-actions {
   display: flex;
   justify-content: flex-end;

@@ -337,8 +337,11 @@ flowchart TB
 - SW 内存态持久化：`CS_READY` 维护的 `tabId→site` 映射与分组快照缓存写入 `chrome.storage.session`（随浏览器会话存续，SW 回收重启后自动恢复读取，不落磁盘）；SW 冷启动时若无映射（浏览器整体重启），由 `tabs.query` + 各已打开 tab 的 content script 重新上报 `CS_READY` 重建 [Expert judgment]。
 - 错误码统一为稳定字符串，UI 侧映射为中文提示，不含堆栈细节，避免向页面上下文泄露内部信息。
 - **存储变更驱动刷新**：面板监听 `chrome.storage.onChanged`（仅 local 区 + 本插件 key `db.danmaku`/`db.groups`，防抖 150ms 合并），content script 右键收藏等外部写入后自动刷新当前分组列表与分组计数，且保留用户的分组/关键词/排序状态。面板自身增删改后不再主动 `loadList`，统一由此驱动，避免重复加载（仅 `loadGroups` 即时更新分组 UI）[Data-backed: 2026-08 实测右键收藏后列表不自动刷新]。`selectAndLoad`（切换分组）等用户交互路径仍主动加载。
+- **可见性补刷（2026-09-03 跨 tab 同步缺陷修复）**：`chrome.storage.onChanged` 为事件广播，但后台/冻结 tab 中的抽屉面板可能丢失该事件（Data-backed: 2026-09-03 实测页面 A 添加弹幕后，切换至已打开的页面 B 抽屉列表不刷新）。新增 `visibility-refresher`：文档 `visibilitychange→visible` 或窗口 `focus`（均文档可见态）时，300ms 防抖合并后触发与存储变更同路径的 `refreshPanel()`（`loadGroups`+`loadList`+`renderUsage`），保留用户筛选状态。事件驱动、无轮询；存储监听仍为前台主信号，可见性刷新为补漏信号。
 
 **官方收藏导入接口核验（2026-09-02 实机）**：端点 `GET https://www.douyu.com/japi/privateCustomApi/favorite/web/bulletscreen/query`，cookie 鉴权、无签名参数、无网络分页（一次 query 返回全量，前端虚拟滚动仅窗口化渲染）；未登录时官方前端不发请求直接弹登录框，插件侧以 `acf_uid` cookie 探测登录态（`src/content/favorite-importer.ts`）。导入边界仅官方云端收藏，不含 DouyuEx 本地扩展库。
+
+**导入冲突策略弹窗单选修复（2026-09-03 实测漏洞）**：`buildRadio` 构建了 `<label><input/><span>文案</span></label>` 完整结构却只 `return input`，label 与文案 span 游离于 DOM 外被丢弃，弹窗中仅见空圆圈、选项文字不可见。修复：返回整体 `label`（`appendChild(label)` 挂载），取值改为 `label.querySelector('input')!.checked`。同时给文案 span 加 `class="dk-radio-label"` + `color/font-size: inherit`，双重防止外部 CSS reset 隐藏。
 
 ### 5.3 导入导出 JSON 文件格式 Schema
 

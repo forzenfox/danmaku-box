@@ -137,7 +137,7 @@ export async function importBackupFromFile(file: File): Promise<boolean> {
   });
   if (choice !== 'run') return false;
 
-  const strategy = overwriteRadio.checked ? 'overwrite' : 'merge';
+  const strategy = overwriteRadio.querySelector('input')!.checked ? 'overwrite' : 'merge';
   if (strategy === 'overwrite') {
     // 覆盖前自动下载当前库临时备份（PRD FR-05 可挽回要求）
     downloadJson(`danmaku-box-临时备份-${today()}.json`, current.data.backup);
@@ -198,12 +198,17 @@ function buildText(text: string): HTMLElement {
   return el;
 }
 
-function buildRadio(
+/**
+ * 构造单选项：返回整体 label（含 input[type=radio] + 文本 span，外层 .dk-radio 负责样式）。
+ * 注意必须返回 label 而非 input——若只返回 input，label 与文本 span 游离于 DOM 外被丢弃，
+ * 弹框将只见空圆圈、不见选项文字（2026-09-03 实测漏洞）。
+ */
+export function buildRadio(
   name: string,
   value: string,
   label: string,
   checked: boolean,
-): HTMLInputElement {
+): HTMLLabelElement {
   const labelEl = document.createElement('label');
   labelEl.className = 'dk-radio';
   const input = document.createElement('input');
@@ -211,9 +216,11 @@ function buildRadio(
   input.name = name;
   input.value = value;
   input.checked = checked;
+  // 显式 class 便于 CSS 命中；color/font-size 继承 .dk-radio，防止外部 reset 隐藏
   const span = document.createElement('span');
+  span.className = 'dk-radio-label';
   span.textContent = label;
   labelEl.appendChild(input);
   labelEl.appendChild(span);
-  return input;
+  return labelEl;
 }
