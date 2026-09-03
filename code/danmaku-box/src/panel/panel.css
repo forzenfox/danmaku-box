@@ -360,25 +360,123 @@ body {
 
 /* ── 空态 ────────────────────────────────── */
 .empty-state {
-  padding: 40px 20px;
+  padding: 4px 16px 8px;
   text-align: center;
   color: var(--text-secondary);
 }
 
+.empty-state .empty-illust {
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.empty-state .empty-illust svg {
+  width: 36px;
+  height: 36px;
+}
+
 .empty-state .empty-title {
-  margin-bottom: 12px;
-  font-size: 13px;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
 }
 
-.empty-state .empty-steps {
-  display: inline-block;
+.empty-state .empty-subtitle {
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+/* 步骤卡：淡蓝底、左对齐，数字徽标 + 标题 + 描述 */
+.empty-state .empty-steps-card {
+  background: var(--bg-active);
+  border-radius: 8px;
+  padding: 8px 12px;
   text-align: left;
-  line-height: 2;
-  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
-.empty-state .btn {
-  margin-top: 4px;
+.empty-state .empty-step {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+
+.empty-state .empty-step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.empty-state .empty-step-num {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.empty-state .empty-step-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.empty-state .empty-step-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-top: 0;
+}
+
+/* CTA 区：主按钮 + 次按钮（描边 + 平台徽标） */
+.empty-state .empty-ctas {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.empty-state .btn-block {
+  width: 100%;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.empty-state .btn-primary.btn-block {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.empty-state .btn-outline-primary {
+  background: #fff;
+  border-color: var(--primary);
+  color: var(--primary);
+  font-size: 12px;
+}
+
+.empty-state .btn-outline-primary:hover:not(:disabled) {
+  background: var(--bg-active);
+}
+
+.empty-state .badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 /* ── toast（面板顶部右对齐，2 秒消失）───── */

@@ -13,6 +13,7 @@ import {
 import { sendMessage } from '../shared/messaging.ts';
 import { exportBackupToFile, importBackupFromFile } from '../shared/backup-ui.ts';
 import { createStorageWatcher } from './storage-watcher.ts';
+import { createVisibilityRefresher } from './visibility-refresher.ts';
 import { resolveContentClick, toggleChecked } from './list-interaction.ts';
 import { buildNavItems } from './nav-items.ts';
 import type { GroupWithCount, NavItemSpec } from './nav-items.ts';
@@ -22,6 +23,14 @@ import {
   favoriteImportHint,
   favoriteImportSummary,
 } from './favorite-import.ts';
+import {
+  CTA_PRIMARY,
+  CTA_SECONDARY,
+  CTA_SECONDARY_BADGE,
+  EMPTY_STEPS,
+  EMPTY_SUBTITLE,
+  EMPTY_TITLE,
+} from './empty-state.ts';
 
 interface ListData {
   items: Danmaku[];
@@ -323,6 +332,48 @@ function pencilIcon(): SVGElement {
   return svg;
 }
 
+// 收藏星 SVG 图标（空态引导插画）
+function starIcon(size = 48): SVGSVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 48 48');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute(
+    'd',
+    'M24 7l4.9 10.1 11 .9-8.2 7.3 2.4 10.7L24 30.8l-10.1 5.2 2.4-10.7-8.2-7.3 11-.9z',
+  );
+  svg.appendChild(path);
+  return svg;
+}
+
+// 下载箭头 SVG 图标（官方收藏导入按钮）
+function downloadIcon(): SVGSVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.6');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute(
+    'd',
+    'M8 3v6.5m0 0L5.5 7M8 9.5L10.5 7M3.5 11v1.5A1.5 1.5 0 005 14h6a1.5 1.5 0 001.5-1.5V11',
+  );
+  svg.appendChild(path);
+  return svg;
+}
+
 function renderList(): void {
   listEl.replaceChildren();
 
@@ -342,20 +393,47 @@ function renderList(): void {
       });
       empty.appendChild(clearBtn);
     } else if (isEmptyLib) {
-      empty.appendChild(h('div', 'empty-title', '还没有收藏任何弹幕'));
-      const steps = h('div', 'empty-steps');
-      steps.appendChild(h('div', undefined, '① 直播间右键弹幕，快速收藏'));
-      steps.appendChild(h('div', undefined, '② 左侧新建分组，按用途归类'));
-      steps.appendChild(h('div', undefined, '③ 点击弹幕条目，一键回填'));
-      empty.appendChild(steps);
-      const add = h('button', 'btn btn-primary', '手动添加第一条弹幕');
+      // 引导插画（线性收藏星，低透明度）
+      const illust = h('div', 'empty-illust');
+      illust.appendChild(starIcon());
+      empty.appendChild(illust);
+
+      // 标题 + 副标题（价值说明）
+      empty.appendChild(h('h2', 'empty-title', EMPTY_TITLE));
+      empty.appendChild(h('p', 'empty-subtitle', EMPTY_SUBTITLE));
+
+      // 步骤卡（数字徽标 + 标题 + 描述）
+      const stepsCard = h('div', 'empty-steps-card');
+      for (const step of EMPTY_STEPS) {
+        const row = h('div', 'empty-step');
+        row.appendChild(h('span', 'empty-step-num', step.num));
+        const body = h('div', 'empty-step-body');
+        body.appendChild(h('div', 'empty-step-label', step.label));
+        body.appendChild(h('div', 'empty-step-desc', step.desc));
+        row.appendChild(body);
+        stepsCard.appendChild(row);
+      }
+      empty.appendChild(stepsCard);
+
+      // CTA 区：主按钮（手动添加）+ 次按钮（官方导入，带平台徽标）
+      const ctas = h('div', 'empty-ctas');
+      const add = h('button', 'btn btn-primary btn-block');
       add.type = 'button';
+      add.appendChild(pencilIcon());
+      add.appendChild(document.createTextNode(` ${CTA_PRIMARY}`));
       add.addEventListener('click', () => void showNewDanmakuModal());
-      empty.appendChild(add);
-      const favBtn = h('button', 'btn', '一键导入斗鱼官方收藏');
+      ctas.appendChild(add);
+
+      const favBtn = h('button', 'btn btn-block btn-outline-primary');
       favBtn.type = 'button';
+      favBtn.appendChild(downloadIcon());
+      favBtn.appendChild(document.createTextNode(` ${CTA_SECONDARY}`));
+      const badge = h('span', 'badge', CTA_SECONDARY_BADGE);
+      favBtn.appendChild(badge);
       favBtn.addEventListener('click', () => void startFavoriteImport());
-      empty.appendChild(favBtn);
+      ctas.appendChild(favBtn);
+
+      empty.appendChild(ctas);
     } else {
       empty.appendChild(h('div', 'empty-title', '该分组还没有弹幕'));
       empty.appendChild(h('div', undefined, '去直播间右键收藏，或在全部弹幕中移动到这里'));
@@ -1020,6 +1098,13 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── 启动 ─────────────────────────────────────
+// 数据刷新：保留分组/关键词/排序/页码状态，仅重拉数据（技术方案 V0.2 5.2）。
+async function refreshPanel(): Promise<void> {
+  await loadGroups();
+  await loadList();
+  void renderUsage();
+}
+
 // 存储变更监听：content script 右键收藏等外部写入触发列表自动刷新（保留筛选条件）。
 // 面板自身增删改后不主动 loadList，统一由此驱动，避免重复加载。
 const storageWatcher = createStorageWatcher({
@@ -1028,13 +1113,19 @@ const storageWatcher = createStorageWatcher({
     return () => chrome.storage.onChanged.removeListener(fn);
   },
   keys: [STORAGE_KEYS.danmaku, STORAGE_KEYS.groups],
-  async onChange() {
-    // 保留分组/关键词/排序/页码状态，仅重拉数据（技术方案 V0.2 5.2）
-    await loadGroups();
-    await loadList();
-  },
+  onChange: () => void refreshPanel(),
 });
 storageWatcher.mount();
+
+// 可见性补刷（2026-09-03 跨 tab 同步缺陷修复）：后台/冻结 tab 的抽屉面板可能
+// 丢失 storage.onChanged 事件，切回本页时以 visibilitychange/focus 为信号补拉最新
+// 数据。事件驱动、无轮询；storage-watcher 仍为前台主信号。
+const visibilityRefresher = createVisibilityRefresher({
+  doc: document,
+  win: window,
+  onShow: () => void refreshPanel(),
+});
+visibilityRefresher.mount();
 
 async function init(): Promise<void> {
   void sendMessage(MESSAGES.PANEL_OPENED);
