@@ -148,6 +148,16 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
   // scroll：页面滚动 → 弹幕区视口 top 平移（弹幕区随文档滚动移动，fixed 抽屉需跟随）
   const onScroll = () => applyRect();
 
+  // 点击抽屉外任意区域 → 收起（用户显式关闭，lastOpen=false，避免全屏退出“复活”）。
+  // 判定：mousedown 捕获阶段取 composedPath，命中路径不含 shadow 宿主即为外部。
+  // iframe 内点击不冒泡到父 document → 面板内弹框/列表天然豁免，正是“非弹框区域”语义。
+  const onExternalPointerDown = (e: MouseEvent) => {
+    if (!open) return; // 已收起：幂等
+    const path = e.composedPath();
+    if (shadowHost && path.includes(shadowHost)) return; // 抽屉子树内（含把手）不收起
+    closeByUser();
+  };
+
   function build(): void {
     // Shadow 宿主容器
     const hostEl = doc.createElement('div');
@@ -198,6 +208,7 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
     view?.addEventListener('fullscreenchange', onFullscreen);
     view?.addEventListener('resize', onResize);
     view?.addEventListener('scroll', onScroll, { passive: true });
+    view?.addEventListener('mousedown', onExternalPointerDown, { capture: true });
   }
 
   function toggle(): void {
@@ -210,11 +221,18 @@ export function createDrawerHost(deps: DrawerHostDeps): DrawerHost {
     applyOpen(false);
     persist();
   }
+  /** 用户显式关闭（如点击抽屉外区域）：视作显式意图，lastOpen=false，全屏退出不恢复 */
+  function closeByUser(): void {
+    lastOpen = false;
+    applyOpen(false);
+    persist();
+  }
 
   function dispose(): void {
     view?.removeEventListener('fullscreenchange', onFullscreen);
     view?.removeEventListener('resize', onResize);
     view?.removeEventListener('scroll', onScroll);
+    view?.removeEventListener('mousedown', onExternalPointerDown, { capture: true });
     shadowHost?.remove(); // shadow 宿主（子树随宿主一并移除）
     root = null;
     shadowHost = null;

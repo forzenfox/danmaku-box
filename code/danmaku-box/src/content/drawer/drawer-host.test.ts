@@ -289,10 +289,13 @@ test('矩形定位：scroll 事件触发后按最新 measureRect 重算（弹幕
     document: { fullscreenElement: null as Element | null },
     addEventListener: (t: string, fn: () => void, opts?: unknown) => {
       listeners[t] = fn;
-      assert.ok(
-        opts == null || (opts as { passive?: boolean }).passive === true,
-        'scroll 监听应为 passive',
-      );
+      // scroll 专属断言：仅当注册 scroll 事件时校验 passive（其他事件如 mousedown 用 capture）
+      if (t === 'scroll') {
+        assert.ok(
+          opts != null && (opts as { passive?: boolean }).passive === true,
+          'scroll 监听应为 passive',
+        );
+      }
     },
     removeEventListener: () => {},
   };
@@ -631,4 +634,119 @@ test('defaultMeasureRect：宽度非正（弹幕区左缘越过且视口过窄�
   const fakeWin = { innerHeight: 893 } as unknown as Window;
   const measure = defaultMeasureRect(nativeDoc as unknown as Document, fakeWin);
   assert.equal(measure(), null);
+});
+
+// ── V4.2：点击抽屉外任意区域 -> 收起（用户显式关闭语义） ────────────────
+
+/** fake view：记录 mousedown/fullscreenchange 等监听器并支持手动触发 */
+function makeFakeView() {
+  const listeners: Record<string, Array<{ cb: (e: unknown) => void; opts?: unknown }>> = {};
+  const doc = { fullscreenElement: null as Element | null };
+  const win = {
+    document: doc,
+    addEventListener: (t: string, fn: (e: unknown) => void, opts?: unknown) => {
+      (listeners[t] ??= []).push({ cb: fn, opts });
+    },
+    removeEventListener: (t: string, fn: (e: unknown) => void) => {
+      const arr = listeners[t] ?? [];
+      const i = arr.findIndex((l) => l.cb === fn);
+      if (i >= 0) arr.splice(i, 1);
+    },
+  };
+  return {
+    win: win as unknown as Window,
+    fire: (t: string, e: unknown) => {
+      for (const l of listeners[t] ?? []) l.cb(e);
+    },
+    listeners,
+    doc,
+  };
+}
+
+/** mousedown 事件桩：composedPath 返回划定的命中路径（模拟 shadow 事件穿越） */
+function clickEvent(path: unknown[]): MouseEvent {
+  return { composedPath: () => path } as unknown as MouseEvent;
+}
+
+test('外部 mousedown 收起：打开后点击抽屉 shadow 外的任意区域 -> isOpen() false', () => {
+  const { doc } = makeFakeDoc();
+  const { win, fire } = makeFakeView();
+  const host = createDrawerHost({ doc, getURL: () => '', session: null, win });
+  host.mount();
+  host.toggle(); // 打开
+  assert.equal(host.isOpen(), true);
+  const outside = clickEvent([{ tag: 'body' }]); // 命中点不含 drawer shadow 宿主
+  fire('mousedown', outside);
+  assert.equal(host.isOpen(), false, '任意外部 mousedown 应收起抽屉');
+});
+
+test('抽屉内 mousedown 不收起：命中路径含 shadow 宿主（把手/抽屉内部）保持打开', () => {
+  const { doc, created } = makeFakeDoc();
+  const { win, fire } = makeFakeView();
+  const host = createDrawerHost({ doc, getURL: () => '', session: null, win });
+  host.mount();
+  host.toggle(); // 打开
+  const hostDiv = created.find((e) => e.className.includes('drawer-host'));
+  const handle = created.find((e) => e.className.includes('drawer-handle'));
+  const shadowHostEl = created[0]; // shadow 宿主（首个 div）
+  assert.ok(shadowHostEl, '应存在 shadow 宿主');
+  // 命中路径含 shadow 宿主：无论点在 wrap 还是 handle（handle 也是 shadow 子树）
+  fire('mousedown', clickEvent([shadowHostEl, hostDiv ?? handle]));
+  assert.equal(host.isOpen(), true, '抽屉子树内点击不应收起');
+});
+
+test('已收起时外部 mousedown 幂等：不报错且保持关闭', () => {
+  const { doc } = makeFakeDoc();
+  const { win, fire } = makeFakeView();
+  const host = createDrawerHost({ doc, getURL: () => '', session: null, win });
+  host.mount(); // 初始即关闭
+  assert.doesNotThrow(() => fire('mousedown', clickEvent([{ tag: 'body' }])));
+  assert.equal(host.isOpen(), false);
+});
+
+test('外部点击按用户显式关闭处理：lastOpen=false，进入/退出全屏不再恢复', () => {
+  const { doc } = makeFakeDoc();
+  const { win, fire, doc: fakeDoc } = makeFakeView();
+  const host = createDrawerHost({ doc, getURL: () => '', session: null, win });
+  host.mount();
+  host.toggle(); // 用户打开 -> lastOpen=true
+  fire('mousedown', clickEvent([{ tag: 'body' }])); // 外部点击 -> 显式关闭
+  assert.equal(host.isOpen(), false);
+  // 全屏进入/退出：lastOpen 已是 false，不得“复活”
+  fakeDoc.fullscreenElement = {} as Element;
+  fire('fullscreenchange', undefined); // 进入全屏（保持关闭）
+  fakeDoc.fullscreenElement = null;
+  fire('fullscreenchange', undefined); // 退出全屏 -> 仍关闭
+  assert.equal(host.isOpen(), false, '外部点击关闭后，全屏退出不得恢复抽屉');
+});
+
+test('外部点击收起写回会话 open:false（与 toggle 手动关闭一致）', async () => {
+  const { doc } = makeFakeDoc();
+  const { win, fire } = makeFakeView();
+  let saved: Record<string, DrawerSessionState> | null = null;
+  const session = {
+    get: async () => undefined,
+    set: async (items: Record<string, DrawerSessionState>) => {
+      saved = items;
+    },
+  };
+  const host = createDrawerHost({ doc, getURL: () => '', session, win });
+  host.mount();
+  host.toggle();
+  fire('mousedown', clickEvent([{ tag: 'body' }]));
+  await Promise.resolve();
+  assert.equal(saved!['drawer.ui']!.open, false, '会话态应写回 open:false');
+});
+
+test('dispose 移除外部 mousedown 监听：其后外部点击不再生效', () => {
+  const { doc } = makeFakeDoc();
+  const { win, fire, listeners } = makeFakeView();
+  const host = createDrawerHost({ doc, getURL: () => '', session: null, win });
+  host.mount();
+  host.toggle();
+  host.dispose();
+  assert.equal((listeners['mousedown'] ?? []).length, 0, 'dispose 应移除 mousedown 监听');
+  fire('mousedown', clickEvent([{ tag: 'body' }]));
+  // 无监听 -> 无回调，抽屉无从变更（无断言依赖：以不抛错 + 监听已移除为主证）
+  assert.ok(true);
 });
