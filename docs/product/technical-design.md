@@ -15,6 +15,7 @@
 |------|------|---------|
 | V0.1 | 2026-08-28 | 初稿：基于 PRD V1.2 与实地验证报告编写 |
 | V0.2 | 2026-08-28 | 技术评审修订：数据模型补 GROUP.last_used_at 与消息协议 GET_MENU_CONTEXT（支撑右键菜单最近使用排序与已收藏标记）；面板形态评审裁决为 sidePanel 并补选型论证（否决 default_popup，保留独立页为备选）+ manifest 补 sidePanel/options_ui；SW 内存态迁移至 chrome.storage.session；Q3 与原型 D3 对齐（一期不做撤销）；里程碑补 P2.5 面板 UI 阶段；统一重复语义（duplicate 字段）；FILL_ACTION 补 DELIVERY_FAILED；写操作串行化机制明确为 Promise 队列；修正 mergeGroups 伪代码签名 |
+| V0.3 | 2026-09-07 | 内容脚本装配更新：斗鱼页入口由「右侧悬浮抽屉 DrawerHost」改为「工具栏『藏+』入口 + 官方锚定弹层宿主」（规格依据 specs/2026-09-07-toolbar-entry-design.md） |
 
 > **证据标注约定**（全文统一使用）：
 > - **[Data-backed]**：来自 PRD、实地验证报告、选择器字典中的实测数据或已确认结论（如斗鱼弹幕 50 字上限、飘屏哈希类名变更、抖音未登录不渲染）。
@@ -272,6 +273,22 @@ flowchart TB
 | 依赖 | M1 StorageService |
 | 边界 | 不采集用户行为数据；不上报任何外部；不参与业务判定 |
 
+### M11 工具栏入口 ToolbarEntry（content script，2026-09-07 起）
+
+| 要素 | 内容 |
+|------|------|
+| 职责 | 向斗鱼聊天工具栏注入「藏+」入口按钮并托管官方锚定弹层宿主。 |
+| 输入 | 适配器探测成功信号、取按钮点击事件 |
+| 输出 | 弹层开合状态、面板 iframe 内容宿主、外部点击/回填后收起事件 |
+| 依赖 | M6 SiteAdapter（锚点/冒烟）、M4 PanelUI（iframe 面板复用 panel.html） |
+| 边界 | 不承载任何业务规则；不做回填逻辑；非斗鱼站点不注入（保持原插件图标入口兜底） |
+
+**设计要点**：
+- **注入点与样式**：向原生聊天工具栏 `.ChatToolBar__left` 注入 18×18「藏+」入口按钮（星形 + 加号徽标），`DOM.insertBefore` 插到官方收藏（`.ChatBarrageCollect`）之前、与「高能」按钮（`.PopularBarrage` 内 `.PopularBarrageInner`）并列；hover 展示主色。
+- **弹层几何**：点击后在工具栏上沿弹出官方锚定弹层承载面板。弹层挂进工具栏作包含块（工具栏 `position: relative`，弹层 `bottom: calc(100% + 6px)` 锚定工具栏上沿）；宽度对齐官方 378px 并 `left: -6px` 对齐官方左缘；高度为 `min(480px, 工具栏上方可用高度 − 6px)` 自适应；外观对齐官方弹窗（白底、顶圆角 8px、底直角），结构为 header（标题 + 编辑/关闭）+ content 列表、无 footer。
+- **未登录提示**：官方收藏按钮未登录时前端直接拦截、不弹窗，我方弹层需自行处理未登录提示。
+- **全屏/外部点击收起**：沿用既有互动约定，外部点击 / 全屏切换时收起弹层。
+
 ---
 
 ## 5. 接口设计
@@ -337,7 +354,7 @@ flowchart TB
 - SW 内存态持久化：`CS_READY` 维护的 `tabId→site` 映射与分组快照缓存写入 `chrome.storage.session`（随浏览器会话存续，SW 回收重启后自动恢复读取，不落磁盘）；SW 冷启动时若无映射（浏览器整体重启），由 `tabs.query` + 各已打开 tab 的 content script 重新上报 `CS_READY` 重建 [Expert judgment]。
 - 错误码统一为稳定字符串，UI 侧映射为中文提示，不含堆栈细节，避免向页面上下文泄露内部信息。
 - **存储变更驱动刷新**：面板监听 `chrome.storage.onChanged`（仅 local 区 + 本插件 key `db.danmaku`/`db.groups`，防抖 150ms 合并），content script 右键收藏等外部写入后自动刷新当前分组列表与分组计数，且保留用户的分组/关键词/排序状态。面板自身增删改后不再主动 `loadList`，统一由此驱动，避免重复加载（仅 `loadGroups` 即时更新分组 UI）[Data-backed: 2026-08 实测右键收藏后列表不自动刷新]。`selectAndLoad`（切换分组）等用户交互路径仍主动加载。
-- **可见性补刷（2026-09-03 跨 tab 同步缺陷修复）**：`chrome.storage.onChanged` 为事件广播，但后台/冻结 tab 中的抽屉面板可能丢失该事件（Data-backed: 2026-09-03 实测页面 A 添加弹幕后，切换至已打开的页面 B 抽屉列表不刷新）。新增 `visibility-refresher`：文档 `visibilitychange→visible` 或窗口 `focus`（均文档可见态）时，300ms 防抖合并后触发与存储变更同路径的 `refreshPanel()`（`loadGroups`+`loadList`+`renderUsage`），保留用户筛选状态。事件驱动、无轮询；存储监听仍为前台主信号，可见性刷新为补漏信号。
+- **可见性补刷（2026-09-03 跨 tab 同步缺陷修复）**：`chrome.storage.onChanged` 为事件广播，但后台/冻结 tab 中的弹层宿主面板（toolbar entry popup）可能丢失该事件（Data-backed: 2026-09-03 实测页面 A 添加弹幕后，切换至已打开的页面 B 弹层宿主列表不刷新）。新增 `visibility-refresher`：文档 `visibilitychange→visible` 或窗口 `focus`（均文档可见态）时，300ms 防抖合并后触发与存储变更同路径的 `refreshPanel()`（`loadGroups`+`loadList`+`renderUsage`），保留用户筛选状态。事件驱动、无轮询；存储监听仍为前台主信号，可见性刷新为补漏信号。
 
 **官方收藏导入接口核验（2026-09-02 实机）**：端点 `GET https://www.douyu.com/japi/privateCustomApi/favorite/web/bulletscreen/query`，cookie 鉴权、无签名参数、无网络分页（一次 query 返回全量，前端虚拟滚动仅窗口化渲染）；未登录时官方前端不发请求直接弹登录框，插件侧以 `acf_uid` cookie 探测登录态（`src/content/favorite-importer.ts`）。导入边界仅官方云端收藏，不含 DouyuEx 本地扩展库。
 
@@ -675,6 +692,7 @@ interface SiteAdapter {
 - `sidePanel`：面板形态采用浏览器侧边栏（见 9.2.1 选型论证）。
 - **不申请** `contextMenus`（自定义菜单）、`scripting`（声明式注入）、`downloads`（面板页 `<a download>` 导出）、`cookies`（不代登/不触凭据）、任何网络权限。二期新增 `*://live.douyin.com/*` host 权限。
 - `options_ui`：承载设置页（原型 D4 设置入口之一），`open_in_tab: true` 以独立标签页打开，避免弹窗内嵌布局受限。
+- 斗鱼页弹层形态改由内容脚本工具栏入口提供（见 M11）：注入的「藏+」锚定弹层仍复用 panel.html 作为 iframe 内容宿主，其所需 `web_accessible_resources`（panel.html）与 sidePanel 面板一致、保持不变。
 - 隐私声明在安装页明示"零上传、零埋点、纯本地"（PRD 第 7 章隐私）。
 
 #### 9.2.1 面板形态选型：sidePanel（评审裁决）
@@ -729,8 +747,8 @@ dev 流程（重载扩展 / service worker 失效）后，老 content script 仍
 **设计原则（融入而非改造）**：
 - 不重试、不弹 UI 提示、不主动清理老 content script（Chrome 自身已通过世界隔离处理）。失效是 dev 偶发现象，不打扰普通用户。
 - 依赖注入（`api: typeof chrome`）便于单测覆盖同步抛错场景，**纯函数**不依赖真实 chrome 全局。
-- 不在 `onMessage` listener 内部加 guard：消息到达时回调内不再调 chrome API（fillEngine / drawer 都是纯 DOM 操作），无需重复防护。
-- drawer host 的 `getURL` / `storage.session` 暂不改造：drawer 运行时失效属另一种场景（如页面 onMessage 触发），按需后续扩展，避免单次 PR 范围爆炸。
+- 不在 `onMessage` listener 内部加 guard：消息到达时回调内不再调 chrome API（fillEngine / 弹层宿主（toolbar entry popup）都是纯 DOM 操作），无需重复防护。
+- 弹层宿主（原 DrawerHost 语义）的 `getURL` / `storage.session` 暂不改造：弹层宿主运行时失效属另一种场景（如页面 onMessage 触发），按需后续扩展，避免单次 PR 范围爆炸。
 
 关联 spec：`docs/superpowers/specs/2026-09-02-extension-context-guard.md`。
 
@@ -785,6 +803,7 @@ dev 流程（重载扩展 / service worker 失效）后，老 content script 仍
 | P5 | 适配器完善 | DouyuAdapter 完整（飘屏暂停/恢复、锁屏工具条遮挡、双形态输入框、冒烟检测） | 斗鱼直播间人工走查：聊天区收藏、飘屏收藏、遮挡场景、回填双形态 |
 | P6 | 备份 | M8 BackupService（导出/导入/合并/覆盖/迁移）+ 设置页（options_ui） | 单元测试（合并算法、跨版本迁移失败不落盘）+ 面板人工验证导出导入 |
 | P7 | 验证 | 性能测试、兼容性回归、诊断导出、M10 收尾 | 性能打点对照 PRD 第 7 章；Chrome/Edge 双内核冒烟；**登录态复测（Q1/Q5）** 前置验收 |
+| P8 | 工具栏入口与锚定弹层（替代 drawer） | 契约测试 + ToolbarEntry 注入 + 弹层宿主 + 移除 DrawerHost | 斗鱼页面人工走查：注入点、弹层几何、未登录提示、全屏/外部点击收起；契约测试（M11 输入/输出/收起事件） |
 
 ### 11.1 里程碑表
 

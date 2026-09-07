@@ -5,7 +5,7 @@
 import { MESSAGES } from '../shared/constants.ts';
 import { createDouyuAdapter } from './adapters/douyu.ts';
 import { createContextMenuController } from './context-menu.controller.ts';
-import { createDrawerHost, type DrawerSessionState } from './drawer/drawer-host.ts';
+import { createToolbarEntry } from './toolbar-entry/toolbar-entry.ts';
 import { safeSendMessage } from './extension-context.ts';
 import { createFillEngine } from './fill-engine.ts';
 import { handleFavoriteRequest } from './favorite-importer.ts';
@@ -30,16 +30,13 @@ if (detected) {
   // FILL_ACTION 执行器：service worker 路由的回填命令在本页执行（技术方案 7.2）
   const fillEngine = createFillEngine(detected.adapter);
 
-  // 抽屉宿主：dock-style 面板（panel.html iframe）。开合为页面内局部状态，不经 service worker
-  const drawer = createDrawerHost({
+  // 工具栏「藏+」入口与官方锚定弹层（spec 2026-09-07，替代原右侧悬浮抽屉）。
+  // 开合为页面内局部状态，不经 service worker；不持久化。
+  const toolbarEntry = createToolbarEntry({
     doc: document,
     getURL: (p) => chrome.runtime.getURL(p),
-    session: {
-      get: (k) => chrome.storage.session.get(k).then((r) => r[k] as DrawerSessionState | undefined),
-      set: (items) => chrome.storage.session.set(items),
-    },
   });
-  drawer.mount();
+  toolbarEntry.mount();
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const type =
@@ -57,12 +54,12 @@ if (detected) {
         mode: payload.mode === 'append' ? 'append' : 'replace',
       });
       sendResponse(result);
-      // Task 4：回填成功后约 0.9s 自动收起抽屉（延迟让抽屉内 toast「已回填」先展示，
+      // 回填成功后约 0.9s 自动收起弹层（延迟让弹层内 toast「已回填」先展示，
       // 收起后输入框露出可直接发送——聚焦由 fill-engine 现有逻辑完成）。失败路径
       // （result.ok !== true）不收起，用户需看到错误提示。900ms 为既定值（spec §5.3），
       // 不抽成可配置项（YAGNI）。
       if (result.ok) {
-        setTimeout(() => drawer.hide(), 900);
+        setTimeout(() => toolbarEntry.hide(), 900);
       }
     } else if (type === MESSAGES.PROBE_REQUEST) {
       // 实时探测（C）：service worker 查询当前 DOM 的适配状态，

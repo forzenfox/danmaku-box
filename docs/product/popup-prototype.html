@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>「藏+」官方锚定弹层 · 原型 V0.1</title>
+<style>
+/* ============================================================
+   「藏+」入口 + 官方锚定弹层 · 原型 V0.1（2026-09-07 实测稿）
+   实测基线：官方收藏弹窗 378×254，8px 顶圆角 / 底直角，
+   底边贴聊天工具栏上沿（.ChatToolBar__left 锚定）。
+   设计方向：外观对齐官方，内容沿用面板 token（#1652f0 系）。
+   ============================================================ */
+
+:root {
+  --primary: #1652f0;
+  --primary-hover: #0e42cc;
+  --border: #e5e6eb;
+  --text: #1f2329;
+  --text-secondary: #86909c;
+  --bg-hover: #f2f3f5;
+  --bg-active: #e8f0ff;
+  --danger: #f53f3f;
+  --warn: #ff7d00;
+  --official-w: 378px;   /* 对齐官方弹窗宽度 */
+  --popup-max-h: 480px;  /* 目标高度上限 */
+  --official-h: 254px;   /* 官方弹窗高度（基线参照） */
+  --radius-top: 8px;
+  --font: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text);
+  background: #f7f8fa;
+  padding: 24px;
+}
+
+/* ── 页头说明 ─────────────────────────────── */
+.page-head { max-width: 840px; margin: 0 auto 20px; }
+.page-head h1 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.page-head p { font-size: 12px; color: var(--text-secondary); line-height: 1.7; }
+.page-head .tag {
+  display: inline-block; font-size: 11px; padding: 1px 8px;
+  border-radius: 999px; background: var(--bg-active); color: var(--primary);
+  margin-right: 6px;
+}
+
+/* 画布工具条：视口切换 + 对照开关 */
+.canvas-toolbar {
+  max-width: 840px; margin: 0 auto 12px;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.canvas-toolbar .label { font-size: 12px; color: var(--text-secondary); }
+.seg {
+  display: inline-flex; border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden; background: #fff;
+}
+.seg button {
+  border: 0; background: #fff; padding: 5px 14px; font-size: 12px;
+  cursor: pointer; color: var(--text);
+}
+.seg button.active { background: var(--primary); color: #fff; }
+.checkbox {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-secondary); cursor: pointer;
+}
+
+/* ── 场景画布：模拟斗鱼直播间右栏 ─────────── */
+.stage {
+  max-width: 840px; margin: 0 auto;
+  background: #0f1222;           /* 模拟直播间暗色外框 */
+  border-radius: 12px; padding: 12px;
+}
+.stage-inner {
+  position: relative;
+  margin: 0 auto;
+  display: flex;
+  background: #fff;
+  overflow: visible;
+}
+/* 左：视频占位 */
+.video-ph {
+  flex: 1 1 auto; min-width: 0;
+  background: linear-gradient(180deg, #1c1f33, #2a2e4a);
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,.35); font-size: 13px;
+}
+/* 右：聊天区 */
+.chat-ph {
+  width: 340px; flex: none; position: relative;
+  display: flex; flex-direction: column;
+  background: #fff;
+}
+.chat-ph .chat-tabs {
+  display: flex; gap: 12px; padding: 8px 12px;
+  border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary);
+}
+.chat-ph .chat-tabs .on { color: var(--danger); font-weight: 600; }
+.chat-ph .chat-msgs {
+  flex: 1; min-height: 0; padding: 8px 12px; overflow: hidden;
+  font-size: 12px; color: #5a5f6e; line-height: 1.8;
+}
+.chat-ph .chat-msgs .sev { color: #333; font-weight: 600; }
+.chat-ph .chat-msgs .lvl { color: #8a6dff; }
+.chat-ph .chat-msgs .room { color: var(--primary); }
+
+/* ── 聊天工具栏（.ChatToolBar 模拟，锚定基准）── */
+.chat-toolbar {
+  position: relative;   /* 弹层/残影/标尺以工具栏为包含块 */
+  display: flex; align-items: center;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  background: #fff;
+}
+.tool-icon {
+  width: 18px; height: 18px; margin-right: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #bbb; border-radius: 4px; cursor: pointer; position: relative;
+}
+.tool-icon:hover { color: #666; }
+.tool-icon svg { width: 16px; height: 16px; }
+.tool-icon .tip {
+  position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
+  white-space: nowrap; font-size: 11px; color: #fff; background: rgba(0,0,0,.75);
+  padding: 2px 8px; border-radius: 4px; z-index: 30; display: none;
+}
+.tool-icon:hover .tip { display: block; }
+
+/* 官方收藏按钮：18×18 + 红点角标（对齐实测 .ChatBarrageCollect） */
+.tool-icon.collect { margin-right: 0; }
+.tool-icon.collect::after {
+  content: ""; position: absolute; top: 1px; right: 1px;
+  width: 5px; height: 5px; border-radius: 50%; background: #f53f3f;
+}
+.tool-icon.collect.hot::after { background: var(--warn); }
+
+/* ── 「藏+」入口按钮（注入点：高能与官方收藏之间）── */
+.tool-icon.cang {
+  color: #bbb;
+}
+.tool-icon.cang:hover { color: var(--primary); }
+.tool-icon.cang svg.star { position: absolute; width: 15px; height: 15px; }
+.tool-icon.cang svg.plus {
+  position: absolute; right: 0; bottom: 0; width: 8px; height: 8px;
+  color: #fff; background: var(--primary); border-radius: 2px;
+}
+.tool-icon.cang.is-on { color: var(--primary); }
+.tool-icon.cang.is-on svg.plus { background: var(--danger); }
+
+/* 输入行（未登录态 弱提示） */
+.chat-input-ph {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-top: 1px solid var(--border);
+  font-size: 12px; color: #b9bec8; gap: 4px;
+}
+.chat-input-ph .send { color: var(--text-secondary); }
+
+/* 官方收藏弹窗 · 基线残影（ghost 对照）───── */
+/* 运行时同样注入工具栏内：bottom 锚定工具栏上沿，left 对齐官方实测 */
+.official-ghost {
+  position: absolute; z-index: 5;
+  bottom: calc(100% + 6px); left: -6px;
+  width: var(--official-w); height: var(--official-h);
+  border: 1.5px dashed rgba(22,82,240,.45);
+  border-bottom: 0;
+  border-radius: var(--radius-top) var(--radius-top) 0 0;
+  background: rgba(22,82,240,.04);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 10px; pointer-events: none;
+}
+.official-ghost .g-label {
+  font-size: 11px; color: var(--primary); background: #fff;
+  border: 1px solid rgba(22,82,240,.4); border-radius: 999px; padding: 1px 8px;
+}
+.official-ghost::before {
+  content: "官方收藏弹窗基线 378×254"; position: absolute; top: 32px;
+  font-size: 11px; color: rgba(22,82,240,.55);
+}
+
+/* ── 「藏+」弹层（官方锚定：底边贴工具栏上沿）──
+   注意：弹层/官方残影/标尺运行时注入 .chat-toolbar 内，
+   absolute 定位以工具栏为包含块；bottom 锚定工具栏上沿。 */
+.cang-pop {
+  position: absolute; z-index: 20;
+  bottom: calc(100% + 6px);             /* 贴工具栏上沿，留 6px 呼吸 */
+  left: -6px;                           /* 与实测官方弹窗左缘对齐（官方 x=358 vs 工具栏 x=364） */
+  width: var(--official-w);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius-top) var(--radius-top) 0 0;
+  box-shadow: 0 -6px 24px rgba(0,0,0,.10);
+  display: none;
+  flex-direction: column;
+  max-height: var(--popup-max-h);
+  overflow: hidden;
+}
+.cang-pop.open { display: flex; }
+/* 与官方的一致性：header 复用「标题+编辑/关闭」 */
+.cang-pop .pop-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.cang-pop .pop-head .t {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; font-weight: 600;
+}
+.cang-pop .pop-head .t .star { color: #f7ba1e; font-size: 12px; }
+.cang-pop .pop-head .ops { display: flex; align-items: center; gap: 8px; }
+.cang-pop .pop-head .ops .edit { font-size: 12px; color: var(--primary); cursor: pointer; }
+.cang-pop .pop-head .ops .close {
+  width: 16px; height: 16px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 14px; color: var(--text-secondary);
+  cursor: pointer; border-radius: 4px; line-height: 1;
+}
+.cang-pop .pop-head .ops .close:hover { background: var(--bg-hover); color: var(--text); }
+
+/* 小组件：搜索 + 排序 + 批量栏 */
+.pop-actions { padding: 6px 12px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.pop-actions .search {
+  flex: 1; min-width: 0; padding: 4px 8px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 4px; color: var(--text);
+}
+.pop-actions .search:focus { outline: none; border-color: var(--primary); }
+.pop-actions .sort { font-size: 12px; padding: 3px 4px; border: 1px solid var(--border); border-radius: 4px; background: #fff; color: var(--text); }
+.pop-actions .batch { display: none; gap: 4px; align-items: center; }
+.pop-actions.batch-on .search, .pop-actions.batch-on .sort { display: none; }
+.pop-actions.batch-on .batch { display: inline-flex; }
+.pop-actions .batch .b { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; color: var(--text); }
+.pop-actions .batch .b.danger { color: var(--danger); border-color: var(--danger); }
+.pop-actions .batch .cnt { font-size: 12px; color: var(--text-secondary); }
+
+/* 分组导航 chips */
+.group-nav { display: flex; gap: 6px; padding: 6px 12px; overflow-x: auto; border-bottom: 1px solid var(--border); flex-shrink: 0; scrollbar-width: thin; }
+.chip {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; font-size: 12px; border: 1px solid var(--border);
+  border-radius: 999px; color: var(--text); background: #fff; cursor: pointer; white-space: nowrap;
+}
+.chip:hover { background: var(--bg-hover); }
+.chip.on { background: var(--bg-active); border-color: var(--primary); color: var(--primary); }
+.chip .n { font-size: 11px; color: var(--text-secondary); }
+.chip.on .n { color: var(--primary); opacity: .8; }
+.chip.star .s { color: #f7ba1e; }
+.chip.new { color: var(--primary); border-style: dashed; border-color: var(--primary); }
+
+/* 列表区 */
+.pop-list { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px 10px; }
+.dm {
+  display: flex; align-items: flex-start; gap: 8px;
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin-bottom: 6px;
+}
+.dm .ck { display: none; width: 13px; height: 13px; margin-top: 2px; accent-color: var(--primary); }
+.pop-list.batch-on .dm .ck { display: inline-block; }
+.dm .body { flex: 1; min-width: 0; cursor: pointer; word-break: break-all; font-size: 12px; line-height: 1.5; }
+.dm .body:hover { color: var(--primary); }
+.dm .meta { margin-top: 2px; font-size: 10px; color: var(--text-secondary); display: flex; gap: 8px; }
+.dm .edit {
+  visibility: hidden; border: 0; background: none; color: var(--text-secondary);
+  cursor: pointer; font-size: 12px; padding: 2px;
+}
+.dm:hover .edit, .dm:focus-within .edit { visibility: visible; }
+.pop-list.batch-on .dm .edit { visibility: hidden; }
+
+/* 空态（紧凑版） */
+.empty {
+  text-align: center; padding: 14px 12px 8px; color: var(--text-secondary);
+}
+.empty .il { font-size: 26px; opacity: .5; margin-bottom: 4px; color: var(--text-secondary); }
+.empty .t { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.empty .s { font-size: 11px; margin-bottom: 8px; }
+.empty .steps { background: var(--bg-active); border-radius: 8px; padding: 6px 10px; text-align: left; display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.empty .step { display: flex; gap: 8px; align-items: flex-start; font-size: 11px; }
+.empty .step .no {
+  width: 16px; height: 16px; border-radius: 50%; background: var(--primary); color:#fff;
+  font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex: none; margin-top: 1px;
+}
+.empty .step .lb { font-weight: 500; color: var(--text); }
+.empty .ctas { display: flex; flex-direction: column; gap: 4px; }
+.empty button {
+  width: 100%; padding: 5px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+}
+.empty .primary { background: var(--primary); border: 1px solid var(--primary); color: #fff; }
+.empty .primary:hover { background: var(--primary-hover); }
+.empty .ghost { background: #fff; border: 1px solid var(--primary); color: var(--primary); }
+
+/* 未登录横幅（决策示意） */
+.not-login {
+  display: none; align-items: center; gap: 6px;
+  padding: 6px 12px; font-size: 11px; color: var(--warn);
+  background: #fff7ef; border-bottom: 1px solid #ffe4ba;
+}
+.not-login.on { display: flex; }
+.not-login .line { flex: 1; }
+
+/* footer */
+.pop-foot {
+  display: flex; justify-content: space-between;
+  padding: 5px 12px; border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--text-secondary); flex-shrink: 0;
+}
+.pop-foot .warn { color: var(--warn); font-weight: 600; }
+
+/* 尺寸标尺（默认隐藏，弹层展开时显示；位置由 JS 锚定工具栏几何） */
+.dim {
+  display: none; position: absolute; z-index: 30; font-size: 10px; color: #8a93a6;
+  align-items: center; gap: 4px; pointer-events: none;
+}
+.dim.on { display: flex; }
+.dim.h { transform-origin: bottom; writing-mode: vertical-rl; }
+.dim.w { white-space: nowrap; transform: translateX(-50%); }
+.dim b { color: var(--primary); font-weight: 600; }
+
+/* 视口（窄）时弹层自适应降高的说明 */
+.dim-notes {
+  display: none; position: absolute; z-index: 30; width: 220px;
+  font-size: 11px; color: var(--text-secondary); line-height: 1.6;
+  border-left: 2px solid var(--primary); padding-left: 8px;
+}
+.dim-notes.on { display: block; }
+.stage.stage-tall .stage-inner { height: 820px; }
+.stage.stage-short .stage-inner { height: 430px; }
+.stage.stage-short .cang-pop { max-height: calc(100% - 96px); }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>「藏+」官方锚定弹层 · 原型 V0.1</h1>
+  <p>
+    <span class="tag">实测基线 2026-09-07</span>
+    <span class="tag">工具栏锚定</span>
+    <span class="tag">宽 378px</span>
+    入口按钮注入斗鱼聊天工具栏「高能⚡」与官方「弹幕收藏⭐」之间（18×18 图标）；
+    弹层底边贴工具栏上沿向上弹出，圆角 8px 顶圆 / 底直角，外观对齐官方收藏弹窗，
+    内容区容纳分组导航 + 搜索排序 + 批量栏 + 列表 + footer。
+  </p>
+</div>
+
+<div class="canvas-toolbar">
+  <span class="label">视口高度</span>
+  <div class="seg" id="seg-viewport">
+    <button data-h="820" class="active">820px（完整 480px）</button>
+    <button data-h="430">430px（自适应降高）</button>
+  </div>
+  <label class="checkbox"><input type="checkbox" id="chk-ghost" checked /> 显示官方基线残影</label>
+  <label class="checkbox"><input type="checkbox" id="chk-notlogin" /> 未登录提示</label>
+</div>
+
+<div class="stage stage-tall" id="stage">
+  <div class="stage-inner" id="stage-inner" style="height:820px">
+
+    <div class="video-ph">视频画面（示意）</div>
+
+    <div class="chat-ph">
+      <div class="chat-tabs"><span>榜单</span><span>活跃</span><span class="on">钻粉</span><span style="flex:1"></span><span>×</span></div>
+      <div class="chat-msgs">
+        <div><span class="lvl">[Lv46]</span> <span class="room">[邦Sa]</span> 邦Sa丶柚屿阿姨: 开钻粉送超大大福利</div>
+        <div class="sev">斗鱼推出了弹幕 ➕1 功能，点击水友弹幕选择 ➕1 即可懒人发弹幕</div>
+        <div><span class="lvl">[Lv25]</span> 婶疼: 30/小时邦家三角洲吃鸡</div>
+        <div><span class="lvl">[Lv49]</span> <span class="room">[邦Sa]</span> 邦sa丶臭良生: 一对一私教灵敏度…</div>
+        <div>欢迎来到邦Sa的直播间，禁止未成年人直播或打赏…</div>
+      </div>
+
+      <!-- 聊天工具栏（锚定基准） -->
+      <div class="chat-toolbar">
+        <span class="tool-icon"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2" fill="#fff"/></svg><i class="tip">表情</i></span>
+        <span class="tool-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="3" width="10" height="10" rx="2"/><path d="M6 6l4 4M10 6l-4 4"/></svg><i class="tip">喇叭</i></span>
+        <span class="tool-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 4.5h11v8h-11z"/><path d="M5.5 3v3M8 3v3M10.5 3v3"/></svg><i class="tip">钻石弹幕</i></span>
+        <span class="tool-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 12V6.5L8 3l4 3.5V12z"/></svg><i class="tip">粉丝弹幕</i></span>
+
+        <!-- ⚡ 高能（PopularBarrage） -->
+        <span class="tool-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M9 1.5L3.5 9h3L6.5 14.5 12 7H9z"/></svg><i class="tip">高能</i></span>
+
+        <!-- ★ 藏+（注入点：高能与官方收藏之间） -->
+        <span class="tool-icon cang" id="cangBtn" role="button" tabindex="0" aria-label="藏+ 弹幕收藏夹">
+          <svg class="star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.7l-5.1 2.6 1-5.7-4.1-4 5.7-.8z"/></svg>
+          <svg class="plus" viewBox="0 0 8 8"><path d="M3.6 1h.8v5.8h-.8zM1 3.6h5.8v.8H1z" fill="currentColor"/></svg>
+          <i class="tip">藏+（弹幕收藏夹）</i>
+        </span>
+
+        <!-- ⭐ 官方收藏（ChatBarrageCollect） -->
+        <span class="tool-icon collect"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 2.4l1.7 3.5 3.9.5-2.8 2.7.7 3.8L8 11.3l-3.5 1.8.7-3.8L2.4 6.4l3.9-.5z"/></svg><i class="tip">弹幕收藏</i></span>
+      </div>
+
+      <!-- 输入区（未登录弱提示） -->
+      <div class="chat-input-ph"><span>登录发弹幕，参与主播互动</span><span class="send">发送</span></div>
+
+      <!-- 官方基线残影 -->
+      <div class="official-ghost" id="ghost">
+        <span class="g-label">官方 378×254</span>
+      </div>
+
+      <!-- 「藏+」弹层 -->
+      <div class="cang-pop" id="cangPop">
+
+        <div class="not-login" id="notLoginBar">
+          <span>⚠️</span><span class="line">您还未登录斗鱼，部分功能不可用（导入官方收藏需登录）</span><span>✕</span>
+        </div>
+
+        <div class="pop-head">
+          <div class="t"><span class="star">★</span> 弹幕收藏夹</div>
+          <div class="ops">
+            <span class="edit">批量管理</span>
+            <span class="close" id="closePop" aria-label="关闭">✕</span>
+          </div>
+        </div>
+
+        <div class="pop-actions" id="popActions">
+          <input class="search" placeholder="搜索弹幕内容…" />
+          <select class="sort"><option>最新收藏</option><option>最早收藏</option><option>内容长度</option></select>
+          <div class="batch">
+            <span class="cnt">已选 0 条</span>
+            <button class="b">移动</button>
+            <button class="b danger">删除</button>
+            <button class="b">退出</button>
+          </div>
+        </div>
+
+        <div class="group-nav">
+          <span class="chip on">全部弹幕 <span class="n">41</span></span>
+          <span class="chip star"><span class="s">★</span> 默认 <span class="n">23</span></span>
+          <span class="chip">梗 <span class="n">9</span></span>
+          <span class="chip">素材 <span class="n">7</span></span>
+          <span class="chip">江川专用 <span class="n">2</span></span>
+          <span class="chip new">＋ 新建分组</span>
+        </div>
+
+        <div class="pop-list" id="popList">
+          <div class="dm">
+            <input type="checkbox" class="ck" />
+            <div class="body">
+              @余小C真的很强: 🥵👅💦🥵👅💦🥵👅💦🥵👅💦
+              <div class="meta"><span>斗鱼 · 3分钟前</span></div>
+            </div>
+            <button class="edit" title="编辑">✎</button>
+          </div>
+          <div class="dm">
+            <input type="checkbox" class="ck" />
+            <div class="body">
+              他是半步博士的当世贤者，他是体魄完美的力之化身…
+              <div class="meta"><span>斗鱼 · 1小时前</span></div>
+            </div>
+            <button class="edit" title="编辑">✎</button>
+          </div>
+          <div class="dm">
+            <input type="checkbox" class="ck" />
+            <div class="body">
+              20岁天才歌手Running：来这学一技之长是可以的
+              <div class="meta"><span>斗鱼 · 2小时前</span></div>
+            </div>
+            <button class="edit" title="编辑">✎</button>
+          </div>
+          <div class="dm">
+            <input type="checkbox" class="ck" />
+            <div class="body">
+              恭喜获得资格奖励：火箭X1
+              <div class="meta"><span>手动 · 昨天</span></div>
+            </div>
+            <button class="edit" title="编辑">✎</button>
+          </div>
+          <div class="empty" style="display:none" id="emptyState">
+            <div class="il">☆</div>
+            <div class="t">还没有收藏任何弹幕</div>
+            <div class="s">收藏喜欢的弹幕，在直播间一键回填</div>
+            <div class="steps">
+              <div class="step"><span class="no">1</span><span><span class="lb">直播间右键弹幕</span>，快速加入收藏</span></div>
+              <div class="step"><span class="no">2</span><span><span class="lb">新建分组</span>，按用途归类</span></div>
+              <div class="step"><span class="no">3</span><span><span class="lb">单击条目</span>，一键回填输入框</span></div>
+            </div>
+            <div class="ctas">
+              <button class="primary">手动添加第一条弹幕</button>
+              <button class="ghost">一键导入斗鱼官方收藏（仅斗鱼）</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pop-foot">
+          <span>存储用量 14.3KB / 10MB <span class="warn">（支持上限提示）</span></span>
+          <span>本地存储 · 不上传云端</span>
+        </div>
+      </div>
+
+      <!-- 尺寸标尺 -->
+      <div class="dim w" id="dimW">宽 <b>378px</b>（对齐官方）</div>
+      <div class="dim h" id="dimH">高 <b id="dimHVal">480</b>px</div>
+      <div class="dim-notes" id="notes">
+        高度规则：min(480px, 工具栏上方可用高度 − 6px)；
+        顶部圆角 8px、底部直角贴合工具栏，与官方弹窗一致。
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var cangBtn = document.getElementById('cangBtn');
+  var cangPop = document.getElementById('cangPop');
+  var closePop = document.getElementById('closePop');
+  var ghost = document.getElementById('ghost');
+  var dimH = document.getElementById('dimHVal');
+  var stage = document.getElementById('stage');
+  var inner = document.getElementById('stage-inner');
+  var chkGhost = document.getElementById('chk-ghost');
+  var chkNotlogin = document.getElementById('chk-notlogin');
+  var notLoginBar = document.getElementById('notLoginBar');
+  var popActions = document.getElementById('popActions');
+  var popList = document.getElementById('popList');
+  var emptyState = document.getElementById('emptyState');
+
+  // 运行时把弹层/官方残影/标尺挂载进 .chat-toolbar，
+  // 使其 absolute 定位以工具栏为包含块（底边贴工具栏上沿弹出，模拟扩展注入）。
+  function moveToToolbar() {
+    var tb = inner.querySelector('.chat-toolbar');
+    ['ghost', 'cangPop'].forEach(function (id) {
+      tb.appendChild(document.getElementById(id));
+    });
+    document.querySelectorAll('.dim, .dim-notes').forEach(function (el) { tb.appendChild(el); });
+  }
+
+  // 几何锚定：弹层高度上限（min(480, 工具栏上方可用空间)）+ 标尺跟随弹层实际高度
+  function layoutAnchors() {
+    var tall = stage.classList.contains('stage-tall');
+    var tb = inner.querySelector('.chat-toolbar');
+    var tbRect = tb.getBoundingClientRect();
+    var iniRect = inner.getBoundingClientRect();
+    var avail = Math.max(120, Math.floor(tbRect.top - iniRect.top - 6));
+    var maxh = tall ? 480 : Math.min(480, avail);
+    cangPop.style.maxHeight = maxh + 'px';
+
+    var open = cangPop.classList.contains('open');
+    var dw = document.querySelector('.dim.w');
+    var dh = document.querySelector('.dim.h');
+    var dn = document.querySelector('.dim-notes');
+    dw.classList.toggle('on', open);
+    dh.classList.toggle('on', open);
+    dn.classList.toggle('on', open);
+    if (open) {
+      var popRect = cangPop.getBoundingClientRect();
+      var h = Math.round(popRect.height);
+      dimH.textContent = h;
+      // 弹层相对工具栏的几何
+      var leftRel = popRect.left - tbRect.left;
+      var bottomRel0 = tbRect.bottom - popRect.top;   // 弹层顶边相对工具栏底部
+      var bottomRel1 = tbRect.bottom - popRect.bottom; // 弹层底边相对工具栏底部
+      dw.style.left = leftRel + popRect.width / 2 + 'px';
+      dw.style.bottom = bottomRel0 + 'px';
+      dh.style.height = h + 'px';
+      dh.style.left = leftRel + popRect.width + 8 + 'px';
+      dh.style.bottom = bottomRel1 + 'px';
+      dn.style.left = leftRel + popRect.width + 14 + 'px';
+      dn.style.bottom = bottomRel1 - Math.max(0, h - 220) + 'px';
+    }
+  }
+
+  function setOpen(open) {
+    cangPop.classList.toggle('open', open);
+    cangBtn.classList.toggle('is-on', open);
+    layoutAnchors();
+  }
+
+  cangBtn.addEventListener('click', function () {
+    setOpen(!cangPop.classList.contains('open'));
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') setOpen(false);
+  });
+
+  closePop.addEventListener('click', function () { setOpen(false); });
+
+  window.addEventListener('resize', layoutAnchors);
+
+  chkGhost.addEventListener('change', function () { ghost.style.display = this.checked ? '' : 'none'; });
+  chkNotlogin.addEventListener('change', function () { notLoginBar.classList.toggle('on', this.checked); });
+
+  document.querySelectorAll('#seg-viewport button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('#seg-viewport button').forEach(function (x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      var h = b.getAttribute('data-h');
+      inner.style.height = h + 'px';
+      stage.classList.toggle('stage-tall', h === '820');
+      stage.classList.toggle('stage-short', h === '430');
+      layoutAnchors();
+    });
+  });
+
+  // 批量管理演示
+  document.querySelector('.edit').addEventListener('click', function () {
+    popActions.classList.toggle('batch-on');
+    popList.classList.toggle('batch-on');
+    this.textContent = this.textContent === '批量管理' ? '切换视图' : '批量管理';
+  });
+  // 空态演示：点分组「梗」切空态
+  document.querySelectorAll('.chip:not(.on):not(.new)').forEach(function (c) {
+    c.addEventListener('click', function () {
+      document.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('on'); });
+      c.classList.add('on');
+      var onEmpty = c.textContent.indexOf('梗') >= 0;
+      document.querySelectorAll('.dm').forEach(function (d) { d.style.display = onEmpty ? 'none' : ''; });
+      emptyState.style.display = onEmpty ? 'block' : 'none';
+    });
+  });
+
+  moveToToolbar();
+  layoutAnchors();
+})();
+</script>
+</body>
+</html>
