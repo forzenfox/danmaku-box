@@ -1,4 +1,4 @@
-﻿# 工具栏「藏+」入口与官方锚定弹层（替代 DrawerHost）Implementation Plan
+# 工具栏「藏+」入口与官方锚定弹层（替代 DrawerHost）Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -121,3 +121,43 @@ CSS（`.cang-pop`）：`position:absolute; bottom:calc(100% + 6px); left:-6px; w
 - **无占位符：** 所有 Step 含语义描述与验证命令。
 - **类型一致性：** `ToolbarEntryDeps/ToolbarEntry/computeMaxHeight` 导出供 index.ts 与测试共用；删除 `DrawerHost` 时 `index.ts` 无残留引用（typecheck 兜底）。
 - **未触碰：** 弹幕渲染、消息协议、panel.ts、适配器、右键菜单、回填引擎零改动。
+
+***
+
+## 追加修复（2026-09-08）：hydration 替换导致「藏+」按钮丢失
+
+**现象：** 刷新斗鱼页面后「藏+」按钮不出现（右键收藏菜单正常）；用户在 chrome://extensions 观察到 Service Worker「无效」并误关联为根因。
+
+**根因分层：**
+
+1. **SW「无效」= MV3 正常生命周期**（非 bug）：SW 空闲约 30s 被 Chrome 终止、事件到达时重新唤醒，扩展管理页显示「无效」即已停止状态。
+2. **按钮丢失的机制级根因**：斗鱼直播间为 SSR 直出（初始 HTML 含 `.ChatToolBar__left`），content script 于 document_idle 注入按钮成功；随后 Vue hydration 用客户端渲染子树整体替换 SSR DOM（佐证：`Barrage-list` 不在 SSR HTML 中），注入的 style/按钮/弹层随 SSR 子树脱离文档；首次挂载成功后无任何守护机制，按钮永久丢失。
+
+**修复（机制级：事件驱动实时判定，非定时轮询/延迟重试）：**
+
+- `build()` 幂等守卫由「引用存在」改为「`btn?.isConnected || pop?.isConnected`」——断连允许重建，build 前清孤儿引用；
+- `mount()` 无论首次挂载成功与否都注册**常驻守护 MutationObserver**（原「注入成功即 disconnect」契约废除）；
+- 守护回调 `onDomMutated()` 三分支：按钮健在 → O(1) 快速路径无操作；已挂载但断连 → 仅重建 DOM 节点（doc/view 级事件监听不受子树替换影响，不重复注册）并重算高度；未挂载且锚点出现 → 完成首次挂载。
+
+**测试：** `toolbar-entry.test.ts` 新增 hydration 守护用例（fake 子树递归断连模拟级联 isConnected）；「延迟渲染」用例断言由「注入成功后应断开观察器」更新为「保持守护观察器」。全量 216 用例 PASS；tsc/eslint/prettier 全绿；dist 已重新构建。
+
+***
+
+## 追加调整（2026-09-08 v2）：图标升级 + 弹框高度锁定
+
+**用户反馈（真实浏览器人工走查）：**
+
+1. 「藏+」按钮图标在工具栏里非常淡（看不出星形/加号），期望与官方 ChatBarrageCollect 18×18 单色收藏 icon 同风格；
+2. 弹框高度被压扁（仅 ~220px），不达 spec 480 上限。
+
+**根因：**
+
+- 图标：原方案 15×15 outline 星 + 8×8 绝对定位蓝点双 SVG 拼接，outline 描边 + 浅灰 baseColor = 视觉对比度过低。
+- 弹框：原 `pop.style.maxHeight = '480px'` 仅设上限，未指定 `height`；cang-pop 内部 flex column + iframe 100% 跟随时，因 pop 无明确 height 而塌缩到 iframe 内容自然高度；外部 CSS 又因 toolbarTop − 6 < 480 被覆盖为更小值，弹框进一步被压扁。
+
+**修复：**
+
+- 图标改为单一 18×18 SVG：圆角底（4px rx，opacity 0.12 浅底）+ 实心五角星（24×24 viewBox），统一 `fill=currentColor`。按钮主色由 `#bbb` 调整为 `#1652f0`（与官方 ChatBarrageCollect 高亮态同色，icon 透出蓝色，更醒目且 hover/打开态加深刻 `#0d3fc9`）。
+- 弹框：`applyMaxHeight()` 改写 `pop.style.height`（而非 max-height），内联锁定 `min(480, toolbarTop − 6)`；CSS 兜底 `height: 480px` 防首帧塌缩。iframe 100% 跟满 pop 高度后内部滚动。
+
+**测试：** 新增 3 用例覆盖「单 SVG + 实心 fill」「mount 写内联 height（294px 收敛）」「工具栏上方空间充足时撑到 480」。全量 219 用例 PASS；tsc/eslint/prettier 全绿；dist 已重新构建。
