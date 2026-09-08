@@ -4,7 +4,22 @@
 
 import { MESSAGES, SCHEMA_VERSION } from './constants.ts';
 import { sendMessage } from './messaging.ts';
-import { mergeLibrary, parseBackup, type BackupFile } from '../background/backup.ts';
+import {
+  mergeLibrary,
+  parseBackup,
+  type BackupFile,
+  type MergeResult,
+} from '../background/backup.ts';
+
+/**
+ * 导入前预演结果决定 UI 路径（无 DOM 副作用，便于单测）：
+ * - 无重复（skipped===0）→ 不弹冲突策略弹窗，直接以 merge 策略执行（合并同名分组、导入新增）
+ * - 有重复 → 弹冲突策略弹窗让用户在 merge/overwrite 中决策
+ * 边界：仅看预览的 skipped；同名分组无内容冲突时仍按 merge 自动合并不需用户决策。
+ */
+export function needsImportPrompt(preview: Pick<MergeResult, 'skipped'>): boolean {
+  return preview.skipped > 0;
+}
 
 export function downloadJson(filename: string, data: unknown): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -105,6 +120,12 @@ export async function importBackupFromFile(file: File): Promise<boolean> {
     { groups: backup.groups, danmaku: backup.danmaku },
   );
 
+  // 无重复时直接以 merge 策略执行，跳过冲突弹窗（用户已说明「无重复不弹框」）。
+  // 有重复才弹策略选择：合并 vs 覆盖。
+  if (!needsImportPrompt(preview)) {
+    return executeImport(backup, 'merge', current.data.backup, preview);
+  }
+
   // 冲突策略弹窗（原型 3.5：合并/覆盖单选，默认合并）
   const radioWrap = document.createElement('div');
   radioWrap.className = 'dk-radio-group';
@@ -138,9 +159,21 @@ export async function importBackupFromFile(file: File): Promise<boolean> {
   if (choice !== 'run') return false;
 
   const strategy = overwriteRadio.querySelector('input')!.checked ? 'overwrite' : 'merge';
+  return executeImport(backup, strategy, current.data.backup, preview);
+}
+
+/**
+ * 执行导入并展示结果汇总（无 UI 弹窗的前置决策；用于合并弹窗跳过后直接调用）。
+ * 覆盖前自动下载当前库临时备份（PRD FR-05 可挽回要求）。
+ */
+async function executeImport(
+  backup: BackupFile,
+  strategy: 'merge' | 'overwrite',
+  currentBackup: BackupFile,
+  _preview: MergeResult,
+): Promise<boolean> {
   if (strategy === 'overwrite') {
-    // 覆盖前自动下载当前库临时备份（PRD FR-05 可挽回要求）
-    downloadJson(`danmaku-box-临时备份-${today()}.json`, current.data.backup);
+    downloadJson(`danmaku-box-临时备份-${today()}.json`, currentBackup);
   }
 
   const r = await sendMessage<{ added: number; skipped: number; mergedGroups: number }>(

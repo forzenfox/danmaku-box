@@ -5,6 +5,7 @@ import {
   favoriteImportHint,
   favoriteImportSummary,
 } from '../../src/panel/favorite-import.ts';
+import { needsImportPrompt } from '../../src/shared/backup-ui.ts';
 
 // 官方收藏导入面板文案映射（决策 2/3：无数据提示、未登录提示）。
 
@@ -61,5 +62,16 @@ describe('favoriteImportSummary', () => {
 describe('FAVORITE_EMPTY_HINT（决策 2：官方无数据提示）', () => {
   it('文案为「官方暂无收藏弹幕」', () => {
     assert.equal(FAVORITE_EMPTY_HINT, '官方暂无收藏弹幕');
+  });
+});
+
+describe('needsImportPrompt（备份导入冲突弹窗判定）', () => {
+  it('无重复（skipped===0）→ 不弹冲突弹窗', () => {
+    assert.equal(needsImportPrompt({ skipped: 0 }), false);
+  });
+
+  it('有重复（skipped>0）→ 弹冲突弹窗', () => {
+    assert.equal(needsImportPrompt({ skipped: 1 }), true);
+    assert.equal(needsImportPrompt({ skipped: 12 }), true);
   });
 });
