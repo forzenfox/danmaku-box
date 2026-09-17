@@ -15,7 +15,10 @@ const SELECTORS = {
   input: '.ChatSend-txt',
   list: '.Barrage-list, #js-barrage-list',
   danmuLayer: '[class*="danmu"]',
-  danmuItem: '[class*="danmu-"]',
+  // 飘屏（2026-09-17 实测修正）：命中目标为弹幕项本身，层容器 pointer-events:none
+  // 永不成为事件目标；宽选择器 [class*="danmu"] 会误命中 .danmudiv-* 等原生面板类名。
+  danmuItem: '[class*="danmuItem"]',
+  danmuText: '[class*="textWrap"]',
 };
 
 export function createDouyuAdapter(): SiteAdapter {
@@ -44,16 +47,17 @@ export function createDouyuAdapter(): SiteAdapter {
       // 聊天区弹幕条目（静止可悬停）
       const chatItem = target.closest(SELECTORS.listItem);
       if (chatItem) return chatItem;
-      // 飘屏弹幕：哈希类名 .danmu-*（2026.06 为 .danmu-e7f029，已变更 → 特征探测兜底，不硬编码）
+      // 飘屏弹幕项本身（特征探测，哈希后缀易变不硬编码）；层容器不在此结构链上
       const danmu = target.closest(SELECTORS.danmuItem);
       if (danmu && (danmu.textContent ?? '').trim() !== '') return danmu;
       return null;
     },
 
     extract(item: Element): ExtractResult {
-      const content = item.querySelector(SELECTORS.content);
-      // 飘屏条目无 .Barrage-content，回退到元素自身文本
-      const text = (content?.textContent ?? item.textContent ?? '').trim();
+      // 飘屏：textWrap 纯文本节点；聊天区：.Barrage-content；均缺失回退自身文本
+      const source =
+        item.querySelector(SELECTORS.danmuText) ?? item.querySelector(SELECTORS.content);
+      const text = (source?.textContent ?? item.textContent ?? '').trim();
       // 富内容判定：条目内存在图片/表情等非文本元素（FR-01 边界）
       const hasRichContent = item.querySelector('img, svg') !== null;
       return { text, hasRichContent };
