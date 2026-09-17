@@ -175,9 +175,24 @@ describe('DouyuAdapter 飘屏命中（C1：命中弹幕项而非层容器）', (
     assert.equal(adapter.findDanmakuItem(asEl(layer)), null);
   });
 
-  it('空文本弹幕项不命中（与聊天区规则一致）', () => {
+  it('空文本且无表情元素的弹幕项不命中（对象池空占位）', () => {
     const layer = buildDanmuLayer([{ uuid: 'u1', text: '   ' }]);
     assert.equal(adapter.findDanmakuItem(asEl(layer.children[0]!)), null);
+  });
+
+  it('纯表情飘屏弹幕（无文本、含 img）→ 命中弹幕项（FR-V02：菜单照出）', () => {
+    const item = fakeEl('danmuItem-a8616a scroll-c8a9ee');
+    item.setAttribute('data-comment-uuid', 'u1');
+    const textBox = fakeEl('text-da6396');
+    const textWrap = fakeEl('textWrap-f7cfb9'); // 无文本，仅表情图片
+    textWrap.appendChild(fakeEl('', { tag: 'img' }));
+    textBox.appendChild(textWrap);
+    item.appendChild(textBox);
+    const hit = adapter.findDanmakuItem(asEl(textWrap));
+    assert.equal(hit, asEl(item), '纯表情弹幕项应命中');
+    const r = adapter.extract(asEl(item));
+    assert.equal(r.text, '', '无文本弹幕提取为空串');
+    assert.equal(r.hasRichContent, true);
   });
 
   it('聊天区条目路径不受影响', () => {
@@ -220,10 +235,11 @@ describe('DouyuAdapter 飘屏文本提取（C2：单条纯文本）', () => {
 // ---------- WAAPI 冻结/恢复（专项 PRD C3/C4/C8；实测：飘屏位移由 WAAPI 驱动，
 // animation-play-state 无效；弹幕项被对象池复用，uuid 更换须安全跳过） ----------
 
-function fakeAnim() {
+function fakeAnim(playState?: string) {
   return {
     paused: false,
     played: 0,
+    playState, // 缺省 undefined：不满足实现的 canceled/finished 跳过条件
     pause() {
       this.paused = true;
     },
@@ -278,6 +294,19 @@ describe('DouyuAdapter WAAPI 冻结/恢复', () => {
     item.isConnected = false;
     adapter.resumeDanmu(asEl(item));
     assert.equal(a.played, 0);
+  });
+
+  it('站方在 uuid 未变时 cancel 过动画 → 恢复跳过（play 会从 0 重启致弹幕重飞）', () => {
+    const adapter = createDouyuAdapter();
+    const canceled = fakeAnim('canceled');
+    const finished = fakeAnim('finished');
+    const running = fakeAnim(); // 既有 fake 无 playState（undefined），应正常恢复
+    const item = fakeDanmuItem('u1', [canceled, finished, running]);
+    adapter.pauseDanmu(asEl(item));
+    adapter.resumeDanmu(asEl(item));
+    assert.equal(canceled.played, 0, 'canceled 动画不得 play');
+    assert.equal(finished.played, 0, 'finished 动画不得 play');
+    assert.equal(running.played, 1);
   });
 
   it('C8：无参调用保持既有语义（no-op，聊天区路径不受影响）', () => {

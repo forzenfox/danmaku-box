@@ -51,16 +51,25 @@ export function createDouyuAdapter(): SiteAdapter {
       // 聊天区弹幕条目（静止可悬停）
       const chatItem = target.closest(SELECTORS.listItem);
       if (chatItem) return chatItem;
-      // 飘屏弹幕项本身（特征探测，哈希后缀易变不硬编码）；层容器不在此结构链上
+      // 飘屏弹幕项本身（特征探测，哈希后缀易变不硬编码）；层容器不在此结构链上。
+      // 非空过滤旨在排除对象池的空占位项；纯表情（无文本但含 img/svg）仍可命中
+      // （FR-V02：菜单照出、复制置灰、收藏保存空文本条目）。
       const danmu = target.closest(SELECTORS.danmuItem);
-      if (danmu && (danmu.textContent ?? '').trim() !== '') return danmu;
+      if (
+        danmu &&
+        ((danmu.textContent ?? '').trim() !== '' || danmu.querySelector('img, svg') !== null)
+      ) {
+        return danmu;
+      }
       return null;
     },
 
     extract(item: Element): ExtractResult {
-      // 飘屏：textWrap 纯文本节点；聊天区：.Barrage-content；均缺失回退自身文本
+      // 聊天区：.Barrage-content（精确锚点，先查）；飘屏：textWrap 纯文本节点；
+      // 均缺失回退自身文本。两选择器对各自路径互斥（飘屏项无 .Barrage-content），
+      // 先精确后宽泛可消除聊天条目后代含 textWrap 类名时的误提取隐患。
       const source =
-        item.querySelector(SELECTORS.danmuText) ?? item.querySelector(SELECTORS.content);
+        item.querySelector(SELECTORS.content) ?? item.querySelector(SELECTORS.danmuText);
       const text = (source?.textContent ?? item.textContent ?? '').trim();
       // 富内容判定：条目内存在图片/表情等非文本元素（FR-01 边界）
       const hasRichContent = item.querySelector('img, svg') !== null;
@@ -117,7 +126,9 @@ export function createDouyuAdapter(): SiteAdapter {
 
     pauseDanmu(target?: Element): void {
       // 无参调用（聊天区）：无飘屏可冻结，保持 no-op（旧 animation-play-state 实现对
-      // WAAPI 驱动位移本就无效，属死代码清除）
+      // WAAPI 驱动位移本就无效，属死代码清除）。
+      // 取舍：暂停元素上全部动画；实测每条弹幕仅 1 个 WAAPI 位移动画，
+      // 不存在与 CSS 入场动画共存导致误冻结的问题。
       if (!target) return;
       const anims = target.getAnimations();
       if (anims.length === 0) return;
@@ -141,6 +152,10 @@ export function createDouyuAdapter(): SiteAdapter {
       if (!target.isConnected) return;
       if (target.getAttribute('data-comment-uuid') !== rec.uuid) return;
       for (const a of rec.anims) {
+        // 站方可能在 uuid 未变时 cancel 过动画；此时 play() 会从 0 重启（弹幕重飞），跳过。
+        // TS lib.dom 的 AnimationPlayState 枚举缺 'canceled'（浏览器规范含），按 string 宽化比较。
+        const state = a.playState as string;
+        if (state === 'canceled' || state === 'finished') continue;
         try {
           a.play();
         } catch {
