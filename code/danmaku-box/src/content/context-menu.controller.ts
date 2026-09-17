@@ -68,7 +68,7 @@ export function createContextMenuController(
   let menuEl: HTMLElement | null = null;
   let toastEl: HTMLElement | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
-  let contextEnabled = true; // 设置「聊天区右键收藏」开关缓存（chrome.storage.onChanged 同步）
+  let contextEnabled = true; // 弹幕右键收藏开关（聊天区+视频区，存储 key 沿用 chatContextMenuEnabled；chrome.storage.onChanged 同步）
   let currentText = '';
   let currentHasRich = false;
 
@@ -177,7 +177,7 @@ export function createContextMenuController(
 
   function renderMenu(x: number, y: number, groups: MenuGroup[]): void {
     const root = menuHost.ensureShadow();
-    removeMenu(); // 只清理旧菜单节点；冻结目标由本次右键在 render 后设置
+    removeMenu(); // 只清理旧菜单节点；冻结目标已由本次右键在 render 前设置
 
     menuEl = document.createElement('div');
     menuEl.className = 'ctx-menu';
@@ -283,7 +283,8 @@ export function createContextMenuController(
     renderMenu(e.clientX, e.clientY, r.data.groups);
   }
 
-  // 设置同步：聊天区右键收藏开关（FR-01，chrome.storage.onChanged 实时生效）
+  // 设置同步：弹幕右键收藏开关（聊天区+视频区，存储 key 沿用 chatContextMenuEnabled；
+  // FR-01，chrome.storage.onChanged 实时生效）
   void chrome.storage.local.get('db.settings').then((bag) => {
     const settings = bag['db.settings'] as { chatContextMenuEnabled?: boolean } | undefined;
     if (settings && typeof settings.chatContextMenuEnabled === 'boolean') {
@@ -305,8 +306,7 @@ export function createContextMenuController(
       // hover 采样（FR-V01）：捕获阶段静默记录指针下弹幕项，不改变弹幕外观
       document.addEventListener(
         'mousemove',
-        (e) =>
-          hover.record(e.clientX, e.clientY, e.target instanceof Element ? e.target : null),
+        (e) => hover.record(e.clientX, e.clientY, e.target instanceof Element ? e.target : null),
         true,
       );
       // 全屏迁移（FR-V05）：进入/退出全屏时把菜单宿主随 fullscreenElement 迁入迁回
