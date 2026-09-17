@@ -216,3 +216,73 @@ describe('DouyuAdapter 飘屏文本提取（C2：单条纯文本）', () => {
     assert.equal(adapter.extract(asEl(item)).text, '聊天区弹幕');
   });
 });
+
+// ---------- WAAPI 冻结/恢复（专项 PRD C3/C4/C8；实测：飘屏位移由 WAAPI 驱动，
+// animation-play-state 无效；弹幕项被对象池复用，uuid 更换须安全跳过） ----------
+
+function fakeAnim() {
+  return {
+    paused: false,
+    played: 0,
+    pause() {
+      this.paused = true;
+    },
+    play() {
+      this.played += 1;
+    },
+  };
+}
+
+function fakeDanmuItem(uuid: string, anims: ReturnType<typeof fakeAnim>[]) {
+  const item = fakeEl('danmuItem-a8616a', { text: '飘屏内容' });
+  item.setAttribute('data-comment-uuid', uuid);
+  (item as unknown as { getAnimations: () => unknown[] }).getAnimations = () => anims;
+  return item;
+}
+
+describe('DouyuAdapter WAAPI 冻结/恢复', () => {
+  it('C3：pauseDanmu(target) 调用 getAnimations().pause()，resumeDanmu 恢复', () => {
+    const adapter = createDouyuAdapter();
+    const a = fakeAnim();
+    const item = fakeDanmuItem('u1', [a]);
+    adapter.pauseDanmu(asEl(item));
+    assert.equal(a.paused, true);
+    adapter.resumeDanmu(asEl(item));
+    assert.equal(a.played, 1);
+  });
+
+  it('C3：无动画元素不抛错（聊天区条目/已结束弹幕）', () => {
+    const adapter = createDouyuAdapter();
+    const plain = fakeEl('Barrage-listItem');
+    // 真实 Element 恒有 getAnimations（无动画返回 []），fake 需补齐该契约
+    (plain as unknown as { getAnimations: () => unknown[] }).getAnimations = () => [];
+    assert.doesNotThrow(() => adapter.pauseDanmu(asEl(plain)));
+    assert.doesNotThrow(() => adapter.resumeDanmu(asEl(plain)));
+  });
+
+  it('C4：池化复用（uuid 更换）→ 恢复安全跳过，不误 play 新动画', () => {
+    const adapter = createDouyuAdapter();
+    const a = fakeAnim();
+    const item = fakeDanmuItem('u1', [a]);
+    adapter.pauseDanmu(asEl(item));
+    item.setAttribute('data-comment-uuid', 'u2'); // 元素被复用给新弹幕
+    adapter.resumeDanmu(asEl(item));
+    assert.equal(a.played, 0, 'uuid 不一致不得恢复');
+  });
+
+  it('C4：元素脱离文档 → 恢复安全跳过', () => {
+    const adapter = createDouyuAdapter();
+    const a = fakeAnim();
+    const item = fakeDanmuItem('u1', [a]);
+    adapter.pauseDanmu(asEl(item));
+    item.isConnected = false;
+    adapter.resumeDanmu(asEl(item));
+    assert.equal(a.played, 0);
+  });
+
+  it('C8：无参调用保持既有语义（no-op，聊天区路径不受影响）', () => {
+    const adapter = createDouyuAdapter();
+    assert.doesNotThrow(() => adapter.pauseDanmu());
+    assert.doesNotThrow(() => adapter.resumeDanmu());
+  });
+});

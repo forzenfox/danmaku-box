@@ -14,12 +14,16 @@ const SELECTORS = {
   content: '.Barrage-content',
   input: '.ChatSend-txt',
   list: '.Barrage-list, #js-barrage-list',
-  danmuLayer: '[class*="danmu"]',
   // 飘屏（2026-09-17 实测修正）：命中目标为弹幕项本身，层容器 pointer-events:none
   // 永不成为事件目标；宽选择器 [class*="danmu"] 会误命中 .danmudiv-* 等原生面板类名。
   danmuItem: '[class*="danmuItem"]',
   danmuText: '[class*="textWrap"]',
 };
+
+// 冻结记录：元素 → 暂停时刻的 uuid 与 Animation 引用。
+// 持有 Animation 对象而非仅元素，配合 uuid 校验规避对象池复用竞态（实测：同元素
+// 1.5s 内 uuid 与文本均已更换）。WeakMap 使被回收元素自动出账，无泄漏。
+const frozenAnims = new WeakMap<Element, { uuid: string | null; anims: Animation[] }>();
 
 export function createDouyuAdapter(): SiteAdapter {
   return {
@@ -111,17 +115,38 @@ export function createDouyuAdapter(): SiteAdapter {
       return { ok: true, truncated };
     },
 
-    pauseDanmu(): void {
-      // P5 里程碑实现（飘屏暂停-操作-恢复）
-      document.querySelectorAll(SELECTORS.danmuLayer).forEach((el) => {
-        (el as HTMLElement).style.setProperty('animation-play-state', 'paused');
-      });
+    pauseDanmu(target?: Element): void {
+      // 无参调用（聊天区）：无飘屏可冻结，保持 no-op（旧 animation-play-state 实现对
+      // WAAPI 驱动位移本就无效，属死代码清除）
+      if (!target) return;
+      const anims = target.getAnimations();
+      if (anims.length === 0) return;
+      for (const a of anims) {
+        try {
+          a.pause();
+        } catch {
+          /* 已 finished/canceled，静默 */
+        }
+      }
+      frozenAnims.set(target, { uuid: target.getAttribute('data-comment-uuid'), anims });
     },
 
-    resumeDanmu(): void {
-      document.querySelectorAll(SELECTORS.danmuLayer).forEach((el) => {
-        (el as HTMLElement).style.removeProperty('animation-play-state');
-      });
+    resumeDanmu(target?: Element): void {
+      if (!target) return;
+      const rec = frozenAnims.get(target);
+      if (!rec) return;
+      frozenAnims.delete(target);
+      // 三重校验之二：脱离文档或 uuid 已更换（元素复用给新弹幕）→ 跳过，
+      // 宁可漏恢复一条已离场弹幕，不可错动新弹幕的动画
+      if (!target.isConnected) return;
+      if (target.getAttribute('data-comment-uuid') !== rec.uuid) return;
+      for (const a of rec.anims) {
+        try {
+          a.play();
+        } catch {
+          /* noop */
+        }
+      }
     },
 
     getLoginState(): 'unknown' {
