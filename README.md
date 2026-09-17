@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | [`code/`](code/) | 代码工程 | [`danmaku-box/`](code/danmaku-box/)：Chrome MV3 扩展「弹幕收藏夹 DanmakuBox」完整源码，TypeScript + esbuild，含单元测试与完整检查门禁 |
 | [`docs/`](docs/) | 文档 | 全工作区文档统一目录，按类别分 `product/`（PRD、原型、技术设计、测试用例）、`research/`（逆向分析）、`superpowers/`（实施计划与设计规格），见 [docs/README.md](docs/README.md) |
-| [`reports/`](reports/) | 验证报告 | 4 份 HTML 分析/验证报告：斗鱼/抖音可行性、DouyuEx 分析、实地验证 |
+| [`reports/`](reports/) | 验证报告 | 5 份 HTML 分析/验证报告：斗鱼/抖音可行性、DouyuEx 分析、实地验证、飘屏弹幕右键收藏可行性 |
 | [`assets/`](assets/) | 共享资源 | 报告通用字体与 JS 库（echarts、mermaid），各报告 HTML 通过 `../../assets/` 引用 |
 
 ## 快速入口

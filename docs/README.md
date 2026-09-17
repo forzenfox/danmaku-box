@@ -4,7 +4,7 @@
 
 | 子目录 | 场景 | 主要文件 |
 | --- | --- | --- |
-| [`product/`](product/) | 产品与研发文档 | `PRD.md`、`prototype-design.md`、`technical-design.md`、`test-cases-p7.md` |
+| [`product/`](product/) | 产品与研发文档 | `PRD.md`、`PRD-danmu-context-menu.md`（飘屏右键收藏专项）、`prototype-design.md`、`technical-design.md`、`test-cases-p7.md` |
 | [`research/`](research/) | 逆向研究与下载指引 | `DOWNLOAD-GUIDE.md`、`douyuex-assets/` |
 | [`superpowers/`](superpowers/) | 实施计划与设计规格（工程流程产物） | `plans/`、`specs/` |
 

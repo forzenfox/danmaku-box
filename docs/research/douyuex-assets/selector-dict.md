@@ -28,11 +28,20 @@
 
 ## 视频区（飘屏弹幕）
 
+> **2026.09.17 实测修正**（证据见《直播画面飘屏弹幕 · 右键收藏可行性分析》）：
+> `.danmu-fbb2a3` 实为**飘屏层容器**（尺寸=视频区，`pointer-events:none`，永不为 event.target），
+> 真正的单条弹幕项是其子元素 `.danmuItem-*`，文本在 `.textWrap-*`；位移由 **Web Animations API** 驱动
+> （实测 `getAnimations()` 有动画对象，`animationName: none` —— 注入 `animation-play-state` 对其无效，
+> 暂停须用 `getAnimations().pause()/play()`）；弹幕项带 `data-comment-uuid` 且为**对象池复用**
+> （跨时刻引用须校验 `isConnected` + uuid 一致）。
+
 | 选择器 | 作用 | 稳定性 |
 |--------|------|--------|
-| `.danmu-fbb2a3` | 飘屏弹幕元素（2026.06 为 `.danmu-e7f029`，已变更——哈希易变实证） | verify |
-| `.showdanmuWrap-9c22cd` | 飘屏展示容器 | verify |
-| `[class*="danmu"]` | 飘屏语义探测兜底 | mid |
+| `.danmu-fbb2a3` | 飘屏**层容器**（2026.06 为 `.danmu-e7f029`——哈希易变实证；层容器不作命中目标） | verify |
+| `.danmuItem-a8616a.scroll-c8a9ee` / `[class*="danmuItem"]` | **单条飘屏弹幕项**（命中目标；`pointer-events:auto`、`data-comment-uuid`、内联 top） | verify（探测兜底 mid） |
+| `.textWrap-f7cfb9` / `[class*="textWrap"]` | 弹幕文本节点（纯内容，不含昵称；父级 `.text-da6396`） | verify（探测兜底 mid） |
+| `.showdanmuWrap-9c22cd` | 飘屏展示容器（外层包裹） | verify |
+| `[class*="danmu"]` | 飘屏语义探测兜底（**注意**：会误命中 `.danmudiv-*` / `.danmuAuthor-*` / `.danmuContent-*` / `.danmuTips-*` / `.danmuReport-*`） | mid |
 
 ## 原生右键面板（需登录态验证）
 
