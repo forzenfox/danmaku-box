@@ -4,6 +4,7 @@
 // 提示条」二选一，任一存在即适配存活；弹幕列表随 WebSocket 延迟渲染，列为可选锚点。
 
 import type { ExtractResult, FillResult, ProbeResult, SiteAdapter } from './types.ts';
+import { buildFillText } from '../build-fill-text.ts';
 
 const SELECTORS = {
   chatroom: '.webcast-chatroom',
@@ -28,9 +29,22 @@ const notImpl = (): never => {
   throw new Error('not implemented');
 };
 
+/** 默认 React 受控写入（Task 0 实测定稿：execCommand('insertText') 覆盖全选区，React 感知；
+ *  直写 innerText + input 事件抖音不感知，不可照搬斗鱼范式） */
+function defaultReactWrite(input: HTMLElement, text: string): boolean {
+  input.focus();
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(input);
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  return document.execCommand('insertText', false, text);
+}
+
 export function createDouyinAdapter(deps: DouyinAdapterDeps = {}): SiteAdapter {
   const doc = () => deps.doc ?? document;
   const location = () => deps.location ?? window.location;
+  const reactWrite = deps.reactWrite ?? defaultReactWrite;
 
   return {
     site: 'douyin',
@@ -72,10 +86,26 @@ export function createDouyinAdapter(deps: DouyinAdapterDeps = {}): SiteAdapter {
       return { text, hasRichContent };
     },
     locateInput(): HTMLElement | null {
-      return notImpl();
+      return doc().querySelector<HTMLElement>(SELECTORS.input);
     },
-    fill(_incoming: string, _mode: 'replace' | 'append'): FillResult {
-      return notImpl();
+
+    fill(incoming: string, mode: 'replace' | 'append'): FillResult {
+      const input = this.locateInput();
+      // FR-D03：未登录输入框不渲染 → NEED_LOGIN 引导；其余无目标/空文本 → NO_INPUT
+      if (!input || incoming === '') {
+        return this.getLoginState() === 'logged_out'
+          ? { ok: false, truncated: false, reason: 'NEED_LOGIN' }
+          : { ok: false, truncated: false, reason: 'NO_INPUT' };
+      }
+      const current = input.innerText;
+      const { text, truncated } = buildFillText({
+        current,
+        incoming,
+        mode,
+        maxLength: DOUYIN_MAX_LENGTH,
+      });
+      const ok = reactWrite(input, text);
+      return { ok, truncated };
     },
     pauseDanmu(_target?: Element): void {
       return notImpl();

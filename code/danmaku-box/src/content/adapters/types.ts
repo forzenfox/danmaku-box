@@ -18,7 +18,8 @@ export interface ExtractResult {
 export interface FillResult {
   ok: boolean;
   truncated: boolean;
-  reason?: 'NO_INPUT';
+  /** 失败原因：NO_INPUT=输入框缺失/空文本；NEED_LOGIN=未登录输入框不渲染 */
+  reason?: 'NO_INPUT' | 'NEED_LOGIN';
 }
 
 export interface SiteAdapter {

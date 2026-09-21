@@ -222,3 +222,90 @@ describe('DouyinAdapter 文本提取（FR-D02：排除昵称污染）', () => {
     assert.equal(r.hasRichContent, true);
   });
 });
+
+// ---------- 回填编排（FR-D03；注入 reactWrite spy 验编排，事件序列 Task 0 定稿） ----------
+
+function fakeInput(innerText: string): HTMLElement {
+  return { innerText } as unknown as HTMLElement;
+}
+
+/** 伪文档：querySelector 命中输入框，其余无视 */
+function fakeDocSel(input: HTMLElement | null): Document {
+  return {
+    querySelector: (sel: string) => {
+      if (sel === I) return input;
+      return null;
+    },
+  } as unknown as Document;
+}
+
+describe('DouyinAdapter 回填编排（FR-D03 / AC-D03）', () => {
+  it('已登录 + replace：超长截断并按截断文本调 reactWrite', () => {
+    const input = fakeInput('旧内容');
+    const wrote: Array<[HTMLElement, string]> = [];
+    const adapter = createDouyinAdapter({
+      doc: fakeDocSel(input),
+      reactWrite: (el, t) => {
+        wrote.push([el, t]);
+        return true;
+      },
+    });
+    const r = adapter.fill('x'.repeat(60), 'replace');
+    assert.equal(r.ok, true);
+    assert.equal(r.truncated, true);
+    assert.equal(wrote.length, 1);
+    assert.equal(wrote[0]![1]!.length, 50, '应写入截断至上限的文本');
+  });
+
+  it('已登录 + append：buildFillText 拼接已有内容后写入', () => {
+    const input = fakeInput('cookie');
+    const wrote: Array<[HTMLElement, string]> = [];
+    const adapter = createDouyinAdapter({
+      doc: fakeDocSel(input),
+      reactWrite: (el, t) => {
+        wrote.push([el, t]);
+        return true;
+      },
+    });
+    const r = adapter.fill('cutter', 'append');
+    assert.equal(r.ok, true);
+    assert.equal(wrote[0]![1], 'cookie cutter');
+  });
+
+  it('未登录（提示条存在）→ reason=NEED_LOGIN，不写输入框', () => {
+    const wrote: Array<unknown> = [];
+    const adapter = createDouyinAdapter({
+      doc: fakeDoc('hint'),
+      reactWrite: (el, t) => {
+        wrote.push([el, t]);
+        return true;
+      },
+    });
+    const r = adapter.fill('hello', 'replace');
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'NEED_LOGIN');
+    assert.equal(wrote.length, 0);
+  });
+
+  it('unknown（双锚点缺失）→ reason=NO_INPUT（与斗鱼输入框缺失语义一致）', () => {
+    const adapter = createDouyinAdapter({ doc: fakeDoc('none') });
+    const r = adapter.fill('hello', 'replace');
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'NO_INPUT');
+  });
+
+  it('空文本 → 直接拒绝，不查询输入框', () => {
+    const wrote: Array<unknown> = [];
+    const adapter = createDouyinAdapter({
+      doc: fakeDoc('input'),
+      reactWrite: (el, t) => {
+        wrote.push([el, t]);
+        return true;
+      },
+    });
+    const r = adapter.fill('', 'replace');
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'NO_INPUT');
+    assert.equal(wrote.length, 0);
+  });
+});
