@@ -222,13 +222,16 @@ test('已登录：按钮 .cang-entry 插入 input-container 首个子元素前�
 });
 
 test('未登录：按钮追加到登录提示条 .cjR8oGui 内', () => {
-  const { doc, chatroom, anchors } = makeDouyinDoc('logged_out');
+  const { doc, anchors } = makeDouyinDoc('logged_out');
   const host = createDouyinEntry({ doc, getURL: (p) => `u://${p}`, win: null });
   host.mount();
   const hint = anchors[0]!;
   const btn = hint.children.find((c) => c.classList.contains('cang-entry'));
   assert.ok(btn, '未登录态按钮应追加到 .cjR8oGui');
-  assert.ok(chatroom.children.some((c) => c.classList.contains('cang-pop')), '弹层仍应挂入 chatroom');
+  assert.ok(
+    anchors[0]!.children.some((c) => c.classList.contains('cang-pop')),
+    '弹层应挂入锚点容器 .cjR8oGui',
+  );
 });
 
 test('降级：chatroom 缺失 mount 静默跳过，零创建', () => {
@@ -264,12 +267,13 @@ test('降级：chatroom 存在但双锚点均缺失 → 静默跳过，零创建
   assert.ok(!host.isOpen());
 });
 
-test('弹层规格：连续快照挂入 chatroom，宽 378、iframe class=cang-iframe 且 src=getURL', () => {
-  const { doc, chatroom } = makeDouyinDoc('logged_in');
+test('弹层规格：连续快照挂入锚点容器，宽 378、iframe class=cang-iframe 且 src=getURL', () => {
+  const { doc, anchors } = makeDouyinDoc('logged_in');
   const host = createDouyinEntry({ doc, getURL: (p) => `cang://${p}`, win: null });
   host.mount();
-  const pop = chatroom.children.find((c) => c.classList.contains('cang-pop'))!;
-  assert.ok(pop, '弹层宿主应挂入 chatroom');
+  const pop = anchors[0]!.children.find((c) => c.classList.contains('cang-pop'))!;
+  assert.ok(pop, '弹层宿主应挂入锚点容器');
+  assert.equal(pop.parentElement, anchors[0], '弹层父节点应为锚点容器');
   assert.ok(DOUYIN_ENTRY_STYLES.includes('width: 378px'), '样式常量应含 378 宽');
   const iframe = pop.children.find((c) => c.tag === 'iframe')!;
   assert.ok(iframe, '弹层内应含 iframe');
@@ -282,22 +286,22 @@ test('弹层规格：连续快照挂入 chatroom，宽 378、iframe class=cang-i
 
 test('弹层高度：以锚点 getBoundingClientRect().top 写入内联 height', () => {
   // 锚点（input-container）顶部 y=300 → min(480, 300-6) = 294
-  const { doc, chatroom } = makeDouyinDoc('logged_in');
+  const { doc, anchors } = makeDouyinDoc('logged_in');
   const host = createDouyinEntry({ doc, getURL: () => 'x', win: null });
   host.mount();
-  const pop = chatroom.children.find((c) => c.classList.contains('cang-pop'))!;
+  const pop = anchors[0]!.children.find((c) => c.classList.contains('cang-pop'))!;
   const inlineH = pop.style['height'];
   assert.ok(inlineH, '应写入内联 height 锁定弹框高度');
   assert.equal(inlineH, '294px');
 });
 
 test('开关：点击 toggle .open 与 .is-on', () => {
-  const { doc, chatroom, anchors } = makeDouyinDoc('logged_in');
+  const { doc, anchors } = makeDouyinDoc('logged_in');
   const host = createDouyinEntry({ doc, getURL: () => 'x', win: null });
   host.mount();
   const input = anchors[0]!;
   const btn = input.children.find((c) => c.classList.contains('cang-entry'))!;
-  const pop = chatroom.children.find((c) => c.classList.contains('cang-pop'))!;
+  const pop = input.children.find((c) => c.classList.contains('cang-pop'))!;
   const click = btn.listeners['click'];
   assert.ok(click?.length, '按钮应注册 click');
   click![0]!();
@@ -310,11 +314,11 @@ test('开关：点击 toggle .open 与 .is-on', () => {
 });
 
 test('Esc 关闭：open 态派发 keydown Escape → 收起', () => {
-  const { doc, chatroom, anchors, docHandlers } = makeDouyinDoc('logged_in');
+  const { doc, anchors, docHandlers } = makeDouyinDoc('logged_in');
   const host = createDouyinEntry({ doc, getURL: () => 'x', win: null });
   host.mount();
   const btn = anchors[0]!.children.find((c) => c.classList.contains('cang-entry'))!;
-  const pop = chatroom.children.find((c) => c.classList.contains('cang-pop'))!;
+  const pop = anchors[0]!.children.find((c) => c.classList.contains('cang-pop'))!;
   btn.listeners['click']![0]!();
   assert.ok(pop.classList.contains('open'));
   const kd = docHandlers['keydown'];
@@ -324,12 +328,12 @@ test('Esc 关闭：open 态派发 keydown Escape → 收起', () => {
 });
 
 test('外部 mousedown 收起；弹层子树内点击不收起', () => {
-  const { doc, chatroom, anchors } = makeDouyinDoc('logged_in');
+  const { doc, anchors } = makeDouyinDoc('logged_in');
   const win = makeFakeWin();
   const host = createDouyinEntry({ doc, getURL: () => 'x', win: win as unknown as Window });
   host.mount();
   const btn = anchors[0]!.children.find((c) => c.classList.contains('cang-entry'))!;
-  const pop = chatroom.children.find((c) => c.classList.contains('cang-pop'))!;
+  const pop = anchors[0]!.children.find((c) => c.classList.contains('cang-pop'))!;
   btn.listeners['click']![0]!();
   assert.ok(pop.classList.contains('open'));
   const md = win.handlers['mousedown'];
@@ -357,13 +361,13 @@ test('hide 幂等', () => {
 });
 
 test('dispose：移除注入节点并解绑', () => {
-  const { doc, chatroom, anchors } = makeDouyinDoc('logged_in');
+  const { doc, anchors } = makeDouyinDoc('logged_in');
   const win = makeFakeWin();
   const host = createDouyinEntry({ doc, getURL: () => 'x', win: win as unknown as Window });
   host.mount();
   const input = anchors[0]!;
   const btn = input.children.find((c) => c.classList.contains('cang-entry'))!;
-  const pop = chatroom.children.find((c) => c.classList.contains('cang-pop'))!;
+  const pop = input.children.find((c) => c.classList.contains('cang-pop'))!;
   host.dispose();
   assert.ok(btn.removed && pop.removed, '按钮与弹层宿主应被移除');
   assert.equal(win.handlers['mousedown']?.length ?? 0, 0, 'win 监听应解绑');

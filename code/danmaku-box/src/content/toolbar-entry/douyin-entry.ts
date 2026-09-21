@@ -3,10 +3,11 @@
 // 职责：向抖音直播聊天区注入 18×18「藏+」收藏按钮 + 弹层宿主（内嵌 panel.html iframe）。
 // 登录态分叉锚点（selector-dict 实测）：
 //   - 已登录：`.webcast-chatroom___input-container` 存在，按钮 insertBefore 到其首个子元素前
-//             （容器最左），弹层挂入 chatroom 子节点，高度以该容器几何为准；
-//   - 未登录：input-container 整体不渲染，被 `.cjR8oGui` 登录提示条替代，按钮 appendChild 到提示条；
+//             （容器最左），弹层挂入锚点(input-container)子节点，高度以该容器几何为准；
+//   - 未登录：input-container 整体不渲染，被 `.cjR8oGui` 登录提示条替代，按钮/弹层 appendChild 到提示条；
 //   - 聊区或双锚点均缺失 → 静默降级，零 DOM 创建（保留插件图标入口兜底）。
-// 弹层以 chatroom 为绝对定位包含块（position:absolute），与斗鱼复用 buildCangIcon / computeMaxHeight。
+// 弹层以锚点容器为绝对定位包含块（position:absolute, bottom:calc(100%+6px) 相对锚点顶部向上张开），
+// 与斗鱼「弹层挂工具栏窄条」语义一致 → 修复弹层溢出视口上方被截断的问题。
 // 边界：不承载业务规则；不做回填；开关为页面内局部状态，不持久化。
 // 测试策略：依赖注入 doc/getURL/win，DOM 副作用留人工走查。
 
@@ -158,14 +159,14 @@ export function createDouyinEntry(deps: DouyinEntryDeps): DouyinEntry {
       hint.appendChild(btn);
     }
 
-    // 3. 弹层宿主：chatroom 子节点（absolute 脱离 flex 流），内部 iframe 载入 panel.html
+    // 3. 弹层宿主：挂入锚点容器（absolute 脱离流，bottom:calc(100%+6px) 相对锚点向上张开）
     pop = doc.createElement('div');
     pop.className = 'cang-pop';
     iframe = doc.createElement('iframe');
     iframe.className = 'cang-iframe';
     iframe.setAttribute('src', getURL('panel.html'));
     pop.appendChild(iframe);
-    chatroom.appendChild(pop);
+    anchor.appendChild(pop);
   }
 
   /**
