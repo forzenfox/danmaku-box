@@ -67,7 +67,10 @@ describe('DouyinAdapter.isLiveRoom 直播间 URL 判定（FR-D01 / AC-D08）', (
   const adapter = createDouyinAdapter({ location: loc('/') });
 
   it('纯数字首段 = 直播间（如 /492632285289）', () => {
-    assert.equal(createDouyinAdapter({ location: loc('/492632285289') }).isLiveRoom(loc('/492632285289')), true);
+    assert.equal(
+      createDouyinAdapter({ location: loc('/492632285289') }).isLiveRoom(loc('/492632285289')),
+      true,
+    );
   });
 
   it('非直播间（首页/目录/搜索等）→ false', () => {
