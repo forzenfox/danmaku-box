@@ -102,5 +102,6 @@ jobs:
           rm -rf release-dist && mkdir release-dist && cp -r dist/. release-dist/
           node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('package.json')).version;const sha=process.env.GITHUB_SHA.slice(0,7);const p={name:'@forzenfox/danmaku-box',version:v+'-ci.'+sha,private:false,files:['*'],publishConfig:{access:'public'},description:'DanmakuBox 扩展发布包：解压后目录即扩展根，可直接在 Chrome/Edge 开发者模式加载'};fs.writeFileSync('release-dist/package.json',JSON.stringify(p,null,2))"
 
+      # 目录参数必须带 ./ 前缀：npm 会把裸目录名（release-dist）解析为包名 spec 而非本地目录
       - name: 发布到 GitHub Packages
-        run: npm publish release-dist --registry https://npm.pkg.github.com
+        run: npm publish ./release-dist --registry https://npm.pkg.github.com
