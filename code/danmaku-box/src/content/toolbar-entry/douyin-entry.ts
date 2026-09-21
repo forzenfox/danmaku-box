@@ -136,7 +136,7 @@ export function createDouyinEntry(deps: DouyinEntryDeps): DouyinEntry {
     // 1. 内嵌样式（随 chatroom 挂载，同包含块语义）
     styleEl = doc.createElement('style');
     styleEl.textContent = DOUYIN_ENTRY_STYLES;
-    chatroom.appendChild(styleEl as never);
+    chatroom.appendChild(styleEl);
 
     // 2. 「藏+」入口按钮：已登录插入 input-container 首个子元素前（容器最左），
     //    未登录追加到登录提示条
@@ -145,7 +145,7 @@ export function createDouyinEntry(deps: DouyinEntryDeps): DouyinEntry {
     btn.setAttribute('title', '藏+（弹幕收藏夹）');
     btn.setAttribute('aria-label', '藏+（弹幕收藏夹）');
     const icon = buildCangIcon(doc);
-    btn.appendChild(icon as never);
+    btn.appendChild(icon);
     btn.addEventListener('click', toggle);
     if (input) {
       const first = input.children[0] ?? null;
