@@ -11,13 +11,13 @@
     "128": "icons/icon128.png"
   },
   "permissions": ["storage", "tabs", "sidePanel"],
-  "host_permissions": ["*://*.douyu.com/*"],
+  "host_permissions": ["*://*.douyu.com/*", "*://*.douyin.com/*"],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["*://*.douyu.com/*"],
+      "matches": ["*://*.douyu.com/*", "*://*.douyin.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
@@ -28,7 +28,7 @@
   "web_accessible_resources": [
     {
       "resources": ["panel.html", "panel.css", "panel.js"],
-      "matches": ["*://*.douyu.com/*"]
+      "matches": ["*://*.douyu.com/*", "*://*.douyin.com/*"]
     }
   ],
   "options_ui": {
