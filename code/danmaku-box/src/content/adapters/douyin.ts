@@ -17,8 +17,9 @@ const SELECTORS = {
   loginHint: '.cjR8oGui',
 };
 
-// 抖音输入框字数上限（Q-D1 未实测，抖音专属占位，独立于斗鱼 DANMAKU_MAX_LENGTH；
-// 值同源于巧合，Task 0 实测对齐后回填此常量）。
+// 抖音输入框字符上限（Q-D1 已实测：写入 150 字符后 React 截断为 50 可见字符，
+// 附加 1 个零宽软换行占位 \u200B；值恰好与斗鱼 DANMAKU_MAX_LENGTH 相同，属实测巧合，
+// 两常量仍独立维护）。
 export const DOUYIN_MAX_LENGTH = 50;
 
 export interface DouyinAdapterDeps {
