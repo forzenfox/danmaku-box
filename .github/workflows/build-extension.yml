@@ -60,6 +60,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GITHUB_TOKEN 自 2025 年起被 GitHub Packages npm 注册表拒绝（401）；
+      # 发布必须使用带 Packages 写权限的 fine-grained PAT（仓库 secret NPM_TOKEN）
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -67,6 +69,8 @@ jobs:
           cache-dependency-path: code/danmaku-box/package-lock.json
           registry-url: https://npm.pkg.github.com
           scope: "@forzenfox"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: 安装依赖
         run: npm ci
