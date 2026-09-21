@@ -44,13 +44,14 @@ if (detected) {
     doc: document,
     getURL: (p) => chrome.runtime.getURL(p),
   });
+  // douyinEntry 同因（FILL_ACTION 成功后要收起抖音弹层），构造无副作用，挂载按站点互斥。
+  const douyinEntry = createDouyinEntry({
+    doc: document,
+    getURL: (p) => chrome.runtime.getURL(p),
+  });
   if (detected.site === 'douyin') {
     // 抖音「藏+」入口（锚点实测 2026-09-21）：只挂 douyin-entry；
     // 斗鱼 toolbar-entry 在抖音页无 .ChatToolBar__left 会静默降级，但按规范显式分流。
-    const douyinEntry = createDouyinEntry({
-      doc: document,
-      getURL: (p) => chrome.runtime.getURL(p),
-    });
     douyinEntry.mount();
   } else {
     toolbarEntry.mount(); // 斗鱼（其他站点由 detector 拦截）
@@ -77,7 +78,11 @@ if (detected) {
       // （result.ok !== true）不收起，用户需看到错误提示。900ms 为既定值（spec §5.3），
       // 不抽成可配置项（YAGNI）。
       if (result.ok) {
-        setTimeout(() => toolbarEntry.hide(), 900);
+        // 收起当前站点入口弹层：斗鱼 toolbar、抖音 douyin 各收各的（未挂载侧 hide 为 no-op）
+        setTimeout(() => {
+          toolbarEntry.hide();
+          douyinEntry.hide();
+        }, 900);
       }
     } else if (type === MESSAGES.PROBE_REQUEST) {
       // 实时探测（C）：service worker 查询当前 DOM 的适配状态，
