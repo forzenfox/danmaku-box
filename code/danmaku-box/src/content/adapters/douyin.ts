@@ -17,6 +17,8 @@ const SELECTORS = {
   loginHint: '.cjR8oGui',
 };
 
+// 抖音输入框字数上限（Q-D1 未实测，抖音专属占位，独立于斗鱼 DANMAKU_MAX_LENGTH；
+// 值同源于巧合，Task 0 实测对齐后回填此常量）。
 export const DOUYIN_MAX_LENGTH = 50;
 
 export interface DouyinAdapterDeps {
@@ -30,7 +32,9 @@ const notImpl = (): never => {
 };
 
 /** 默认 React 受控写入（Task 0 实测定稿：execCommand('insertText') 覆盖全选区，React 感知；
- *  直写 innerText + input 事件抖音不感知，不可照搬斗鱼范式） */
+ *  直写 innerText + input 事件抖音不感知，不可照搬斗鱼范式）。
+ *  注：写路径作用于真实 window/document（非 deps.doc）——生产环境 deps.doc===document、
+ *  未注入 reactWrite 时行为正确；测试一律注入 reactWrite spy，本默认实现不单测。 */
 function defaultReactWrite(input: HTMLElement, text: string): boolean {
   input.focus();
   const sel = window.getSelection();
