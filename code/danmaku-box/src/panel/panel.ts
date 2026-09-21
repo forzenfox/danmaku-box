@@ -774,7 +774,7 @@ async function fillDanmaku(item: Danmaku): Promise<void> {
     void chrome.tabs.create({ url: 'https://www.douyin.com/?show_login=1' });
   } else if (r.error?.code === ERROR_CODES.SITE_UNSUPPORTED) {
     toast('请在斗鱼直播间页面使用', 'warn');
-  } else if (r.error?.code === 'ADAPTER_DOWN') {
+  } else if (r.error?.code === ERROR_CODES.ADAPTER_DOWN) {
     toast('直播页已改版，回填暂不可用，请等待插件更新', 'warn');
   } else {
     toast(r.error?.message ?? '回填暂不可用，请稍后重试', 'warn');
