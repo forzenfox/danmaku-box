@@ -299,7 +299,8 @@ body {
   flex-shrink: 0;
 }
 
-.item-actions .item-edit-icon {
+.item-actions .item-edit-icon,
+.item-actions .item-delete-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -313,8 +314,39 @@ body {
 }
 
 .danmaku-item:hover .item-edit-icon,
-.danmaku-item:focus-within .item-edit-icon {
+.danmaku-item:focus-within .item-edit-icon,
+.danmaku-item:hover .item-delete-icon,
+.danmaku-item:focus-within .item-delete-icon {
   visibility: visible;
+}
+
+.item-delete-icon:hover {
+  color: var(--danger);
+}
+
+/* 编辑态行：输入框 + ✕ 完成按钮（保存并退出，V3.1） */
+.edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.edit-row .item-done-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.edit-row .item-done-icon:hover {
+  color: var(--text);
 }
 
 .edit-input {

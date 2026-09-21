@@ -1,5 +1,5 @@
 // M3 右键收藏 ContextMenuController（技术方案 V0.2 4.M3 / P3 里程碑，原型设计 V0.2 3.1）。
-// 职责：在页面内渲染自定义右键菜单并上报收藏命令。
+// 职责：在页面内渲染自定义右键菜单并上报收藏命令；飘屏弹幕经三级命中定位、单条冻结与全屏宿主迁移。
 // 边界：不直接访问存储；不做回填；不包含业务校验。
 // UI 经 Shadow DOM 挂载，与直播页面样式完全隔离（融入而非改造）。
 
@@ -8,6 +8,10 @@ import { sendMessage } from '../shared/messaging.ts';
 import type { MenuGroup } from '../background/danmaku-store.ts';
 import type { SiteAdapter } from './adapters/types.ts';
 import { computeMenuPosition } from './menu-position.ts';
+import { createMenuHost } from './menu-host.ts';
+import { createHoverSampler } from './hover-sampler.ts';
+import { resolveHit } from './danmu-hit.ts';
+import { createFreezeManager } from './danmu-freeze.ts';
 
 export interface ContextMenuControllerDeps {
   adapter: SiteAdapter;
@@ -55,28 +59,21 @@ export function createContextMenuController(
 ): ContextMenuController {
   const { adapter } = deps;
 
-  let shadow: ShadowRoot | null = null;
+  const menuHost = createMenuHost(document, MENU_STYLES);
+  const hover = createHoverSampler({
+    findItem: (t) => adapter.findDanmakuItem(t),
+    now: () => Date.now(),
+  });
+  const freeze = createFreezeManager(adapter);
   let menuEl: HTMLElement | null = null;
   let toastEl: HTMLElement | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
-  let contextEnabled = true; // 设置「聊天区右键收藏」开关缓存（chrome.storage.onChanged 同步）
+  let contextEnabled = true; // 弹幕右键收藏开关（聊天区+视频区，存储 key 沿用 chatContextMenuEnabled；chrome.storage.onChanged 同步）
   let currentText = '';
   let currentHasRich = false;
 
-  function ensureShadow(): ShadowRoot {
-    if (shadow) return shadow;
-    const host = document.createElement('div');
-    host.dataset.danmakuBox = 'root';
-    document.documentElement.appendChild(host);
-    shadow = host.attachShadow({ mode: 'open' });
-    const style = document.createElement('style');
-    style.textContent = MENU_STYLES;
-    shadow.appendChild(style);
-    return shadow;
-  }
-
   function showToast(text: string, warn = false): void {
-    const root = ensureShadow();
+    const root = menuHost.ensureShadow();
     toastEl?.remove();
     toastEl = document.createElement('div');
     toastEl.className = warn ? 'ctx-toast warn' : 'ctx-toast';
@@ -88,7 +85,8 @@ export function createContextMenuController(
     }, 2000);
   }
 
-  function closeMenu(): void {
+  /** 仅移除菜单 DOM 与文档级监听，不动冻结状态（供 renderMenu 复用旧节点清理） */
+  function removeMenu(): void {
     clearTimeout(closeTimer);
     if (menuEl) {
       menuEl.remove();
@@ -96,7 +94,11 @@ export function createContextMenuController(
     }
     document.removeEventListener('mousedown', onDocMouseDown, true);
     document.removeEventListener('keydown', onDocKeyDown, true);
-    adapter.resumeDanmu();
+  }
+
+  function closeMenu(): void {
+    removeMenu();
+    freeze.release(); // C7：任意关闭路径（收藏/Esc/点击外部/移出超时）均恢复被冻结弹幕，幂等
   }
 
   function onDocMouseDown(e: MouseEvent): void {
@@ -174,8 +176,8 @@ export function createContextMenuController(
   }
 
   function renderMenu(x: number, y: number, groups: MenuGroup[]): void {
-    const root = ensureShadow();
-    closeMenu();
+    const root = menuHost.ensureShadow();
+    removeMenu(); // 只清理旧菜单节点；冻结目标已由本次右键在 render 前设置
 
     menuEl = document.createElement('div');
     menuEl.className = 'ctx-menu';
@@ -252,21 +254,17 @@ export function createContextMenuController(
   }
 
   async function onContextMenu(e: MouseEvent): Promise<void> {
-    if (!contextEnabled) return;
-    const target = e.target;
-    if (!(target instanceof Element)) return;
-    let item = adapter.findDanmakuItem(target);
-    if (!item) {
-      // 锁屏工具条（.Barrage-topFloater）遮挡弹幕时的坐标级命中兜底：
-      // 从点击坐标的全部叠层元素中寻找弹幕条目，收藏能力不因工具条存在而失效（技术方案 8.2）
-      for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
-        const found = adapter.findDanmakuItem(el);
-        if (found) {
-          item = found;
-          break;
-        }
-      }
-    }
+    if (!contextEnabled) return; // C9：开关关闭时聊天区与视频区均不拦截，恢复站点缺省行为
+    // 三级命中：① 事件目标 ② hover 采样（三重校验后采用）③ 坐标叠层反查
+    const item = resolveHit(
+      {
+        findItem: (t) => adapter.findDanmakuItem(t),
+        now: () => Date.now(),
+        elementsFromPoint: (x, y) => Array.from(document.elementsFromPoint(x, y)),
+      },
+      e,
+      hover.latest(),
+    );
     if (!item) return; // 非弹幕区域：不拦截原生菜单
 
     e.preventDefault();
@@ -281,11 +279,12 @@ export function createContextMenuController(
       showToast('本地数据读取失败', true);
       return;
     }
-    adapter.pauseDanmu();
+    freeze.freeze(item); // FR-V03：仅冻结被点弹幕，画面内其余弹幕照常滚动
     renderMenu(e.clientX, e.clientY, r.data.groups);
   }
 
-  // 设置同步：聊天区右键收藏开关（FR-01，chrome.storage.onChanged 实时生效）
+  // 设置同步：弹幕右键收藏开关（聊天区+视频区，存储 key 沿用 chatContextMenuEnabled；
+  // FR-01，chrome.storage.onChanged 实时生效）
   void chrome.storage.local.get('db.settings').then((bag) => {
     const settings = bag['db.settings'] as { chatContextMenuEnabled?: boolean } | undefined;
     if (settings && typeof settings.chatContextMenuEnabled === 'boolean') {
@@ -304,6 +303,14 @@ export function createContextMenuController(
   return {
     mount(): void {
       document.addEventListener('contextmenu', (e) => void onContextMenu(e), true);
+      // hover 采样（FR-V01）：捕获阶段静默记录指针下弹幕项，不改变弹幕外观
+      document.addEventListener(
+        'mousemove',
+        (e) => hover.record(e.clientX, e.clientY, e.target instanceof Element ? e.target : null),
+        true,
+      );
+      // 全屏迁移（FR-V05）：进入/退出全屏时把菜单宿主随 fullscreenElement 迁入迁回
+      document.addEventListener('fullscreenchange', () => menuHost.migrate());
     },
   };
 }

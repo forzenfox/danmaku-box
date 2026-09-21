@@ -7,6 +7,9 @@
 // 保留插件图标入口兜底；开关为页面内局部状态，不持久化。
 // 测试策略：依赖注入 doc/getURL/win，DOM 副作用留人工走查（spec §4/§5）。
 
+/** 斗鱼聊天工具栏左区锚点选择器（装配互斥契约端口，见 index.assembly.test.ts）。 */
+export const TOOLBAR_ENTRY_ANCHOR = '.ChatToolBar__left';
+
 /** 内嵌样式：作用域前缀 cang-，挂载于 .ChatToolBar__left 内（工具栏为 absolute 包含块） */
 export const TOOLBAR_ENTRY_STYLES = `
 .cang-pop {
@@ -78,7 +81,7 @@ export interface ToolbarEntry {
  * 单一 SVG：viewBox 24×24，主图五角星 + 圆角底矩形占满，颜色由 `currentColor` 透出，
  * 按钮默认主色蓝 #1652f0，hover/打开态不变（与官方一致：颜色由父级 color 控制）。
  */
-function buildCangIcon(doc: Document): Element {
+export function buildCangIcon(doc: Document): Element {
   const NS = 'http://www.w3.org/2000/svg';
   const svg = doc.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -166,7 +169,7 @@ export function createToolbarEntry(deps: ToolbarEntryDeps): ToolbarEntry {
   function build(): void {
     // 幂等守卫：已注入且仍在文档中不重复 build；断连（hydration 替换子树）允许重建
     if (btn?.isConnected || pop?.isConnected) return;
-    toolbar = doc.querySelector('.ChatToolBar__left');
+    toolbar = doc.querySelector(TOOLBAR_ENTRY_ANCHOR);
     if (!toolbar) {
       fallback();
       return;

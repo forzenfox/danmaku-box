@@ -40,7 +40,7 @@ export const STORAGE_KEYS = {
   schemaVersion: 'meta.schemaVersion',
 } as const;
 
-/** 稳定错误码（技术方案 5.2，共 18 个） */
+/** 稳定错误码（技术方案 5.2，共 19 个） */
 export const ERROR_CODES = {
   STORAGE_FULL: 'STORAGE_FULL',
   INVALID_CONTENT: 'INVALID_CONTENT',
@@ -54,6 +54,7 @@ export const ERROR_CODES = {
   NO_ACTIVE_TAB: 'NO_ACTIVE_TAB',
   SITE_UNSUPPORTED: 'SITE_UNSUPPORTED',
   ADAPTER_DOWN: 'ADAPTER_DOWN',
+  NEED_LOGIN: 'NEED_LOGIN',
   NOT_LOGGED_IN: 'NOT_LOGGED_IN',
   NO_INPUT: 'NO_INPUT',
   DELIVERY_FAILED: 'DELIVERY_FAILED',

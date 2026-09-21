@@ -18,7 +18,8 @@ export interface ExtractResult {
 export interface FillResult {
   ok: boolean;
   truncated: boolean;
-  reason?: 'NO_INPUT';
+  /** 失败原因：NO_INPUT=输入框缺失/空文本；NEED_LOGIN=未登录输入框不渲染 */
+  reason?: 'NO_INPUT' | 'NEED_LOGIN';
 }
 
 export interface SiteAdapter {
@@ -31,8 +32,10 @@ export interface SiteAdapter {
   extract(item: Element): ExtractResult;
   locateInput(): HTMLElement | null;
   fill(text: string, mode: 'replace' | 'append'): FillResult;
-  pauseDanmu(): void;
-  resumeDanmu(): void;
+  /** 冻结飘屏弹幕运动；传入目标元素时仅冻结该条（WAAPI），无参调用保持旧语义（no-op） */
+  pauseDanmu(target?: Element): void;
+  /** 恢复冻结；元素脱离文档或 uuid 变更（对象池复用）时安全跳过 */
+  resumeDanmu(target?: Element): void;
   getLoginState(): 'logged_in' | 'logged_out' | 'unknown';
   getRoomId(): string;
 }

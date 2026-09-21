@@ -6,6 +6,7 @@ import './panel.css';
 import '../shared/backup-ui.css';
 import {
   DANMAKU_MAX_LENGTH,
+  ERROR_CODES,
   GROUP_NAME_MAX_LENGTH,
   MESSAGES,
   STORAGE_KEYS,
@@ -332,6 +333,48 @@ function pencilIcon(): SVGElement {
   return svg;
 }
 
+// 叉叉 SVG 图标（编辑态「完成」= 保存并退出）
+function closeIcon(): SVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.6');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', 'M4.5 4.5l7 7m0-7l-7 7');
+  svg.appendChild(path);
+  return svg;
+}
+
+// 垃圾桶 SVG 图标（行内删除，2026-09-21 测试反馈恢复）
+function trashIcon(): SVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.6');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const trunk = document.createElementNS(NS, 'path');
+  trunk.setAttribute(
+    'd',
+    'M3 4.5h10M6.5 4.5V3a1 1 0 011-1h1a1 1 0 011 1v1.5M5 4.5l.5 8a1 1 0 001 1h3a1 1 0 001-1l.5-8',
+  );
+  const cap = document.createElementNS(NS, 'path');
+  cap.setAttribute('d', 'M6.5 7.5v3.5m3-3.5v3.5');
+  svg.appendChild(trunk);
+  svg.appendChild(cap);
+  return svg;
+}
+
 // 收藏星 SVG 图标（空态引导插画）
 function starIcon(size = 48): SVGSVGElement {
   const NS = 'http://www.w3.org/2000/svg';
@@ -565,9 +608,10 @@ function renderItem(item: Danmaku): HTMLElement {
   });
   main.appendChild(content);
 
-  // 行内编辑态
+  // 行内编辑态（V3.1）：输入框 + 右侧 ✕ 完成按钮（= 保存并退出，同回车）；Esc 仍为不保存退出
   if (state.editingId === item.id) {
     row.replaceChildren();
+    const editRow = h('div', 'edit-row');
     const input = document.createElement('input');
     input.className = 'edit-input';
     input.value = item.content;
@@ -579,12 +623,21 @@ function renderItem(item: Danmaku): HTMLElement {
         renderList();
       }
     });
-    row.appendChild(input);
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'item-done-icon';
+    done.title = '完成编辑';
+    done.setAttribute('aria-label', '完成编辑');
+    done.appendChild(closeIcon());
+    done.addEventListener('click', () => void updateDanmaku(item.id, input.value));
+    editRow.appendChild(input);
+    editRow.appendChild(done);
+    row.appendChild(editRow);
     input.focus();
     return row;
   }
 
-  // 常态行内（V3）：回填=单击内容；仅 hover/聚焦浮现 ✎ 编辑图标；移动/删除并入批量栏
+  // 常态行内（V3.1）：回填=单击内容；仅 hover/聚焦浮现 ✎ 编辑、删除图标（删除先确认，2026-09-21 测试反馈恢复行内删除）
   if (!state.batchMode) {
     const actions = h('div', 'item-actions');
     const edit = document.createElement('button');
@@ -597,7 +650,15 @@ function renderItem(item: Danmaku): HTMLElement {
       state.editingId = item.id;
       renderList();
     });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'item-delete-icon';
+    del.title = '删除';
+    del.setAttribute('aria-label', '删除这条弹幕');
+    del.appendChild(trashIcon());
+    del.addEventListener('click', () => void confirmDeleteDanmaku(item.id));
     actions.appendChild(edit);
+    actions.appendChild(del);
     main.appendChild(actions);
   }
   row.appendChild(main);
@@ -718,7 +779,9 @@ async function updateDanmaku(id: string, content: string): Promise<void> {
   if (r.ok) {
     toast('已保存');
     await loadGroups();
-    // 列表刷新由存储变更监听统一驱动
+    // 显式刷新：内容未修改时 storage.set 不触发 onChanged，存储监听驱动会漏刷，
+    // 导致编辑态无法退出（2026-09-21 修复）
+    await loadList();
   } else {
     toast(errorText(r.error?.code, '保存失败'), 'warn');
     renderList();
@@ -737,6 +800,16 @@ async function deleteDanmaku(ids: string[]): Promise<void> {
     toast(errorText(r.error?.code, '删除失败'), 'warn');
     renderList();
   }
+}
+
+// 行内删除：先确认（删除后不可恢复），确认后再删除（2026-09-21 测试反馈）
+async function confirmDeleteDanmaku(id: string): Promise<void> {
+  const ok = await confirmModal({
+    title: '删除这条弹幕？',
+    body: '删除后不可恢复。',
+    confirmText: '删除',
+  });
+  if (ok) await deleteDanmaku([id]);
 }
 
 async function moveDanmaku(ids: string[]): Promise<void> {
@@ -768,9 +841,12 @@ async function fillDanmaku(item: Danmaku): Promise<void> {
   });
   if (r.ok && r.data?.ok) {
     toast(r.data.truncated ? '已回填（超长已截断），可直接发送' : '已回填，可直接发送');
-  } else if (r.error?.code === 'SITE_UNSUPPORTED') {
+  } else if (r.error?.code === ERROR_CODES.NEED_LOGIN) {
+    toast('抖音直播需登录后才能回填，请先登录', 'warn');
+    void chrome.tabs.create({ url: 'https://www.douyin.com/?show_login=1' });
+  } else if (r.error?.code === ERROR_CODES.SITE_UNSUPPORTED) {
     toast('请在斗鱼直播间页面使用', 'warn');
-  } else if (r.error?.code === 'ADAPTER_DOWN') {
+  } else if (r.error?.code === ERROR_CODES.ADAPTER_DOWN) {
     toast('直播页已改版，回填暂不可用，请等待插件更新', 'warn');
   } else {
     toast(r.error?.message ?? '回填暂不可用，请稍后重试', 'warn');

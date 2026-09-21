@@ -3,7 +3,12 @@
 // 沿用 drawer-host.test.ts 的 fake doc 最小桩思路，增强 querySelector/insertBefore/contains/事件存储。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createToolbarEntry, computeMaxHeight, TOOLBAR_ENTRY_STYLES } from './toolbar-entry.ts';
+import {
+  createToolbarEntry,
+  computeMaxHeight,
+  TOOLBAR_ENTRY_STYLES,
+  buildCangIcon,
+} from './toolbar-entry.ts';
 
 /** fake 元素：涵盖目标断言所需成员 */
 interface FakeEl {
@@ -591,4 +596,52 @@ test('dispose：移除注入节点并解绑', () => {
     (doc as unknown as { docHandlers?: Record<string, unknown[]> }).docHandlers ?? {},
   );
   assert.ok(!docKeys.includes('keydown') || true, 'doc keydown 解绑见实现（桩不跟踪则跳过）');
+});
+
+// ── buildCangIcon 导出：供抖音入口 douyin-entry.ts 复用（DRY）──────────────────
+
+/** 最小 fake SVG 节点：模仿 makeEl 风格，覆盖 buildCangIcon 用到的成员 */
+interface SvgNode {
+  tag: string;
+  attrs: Record<string, string>;
+  children: SvgNode[];
+  setAttribute(k: string, v: string): void;
+  appendChild(c: SvgNode): SvgNode;
+}
+
+function makeSvgNode(tag: string): SvgNode {
+  const node: SvgNode = {
+    tag,
+    attrs: {},
+    children: [],
+    setAttribute(k: string, v: string) {
+      this.attrs[k] = v;
+    },
+    appendChild(c: SvgNode) {
+      this.children.push(c);
+      return c;
+    },
+  };
+  return node;
+}
+
+/** 最小 fake doc：仅提供 createElementNS（真实实现中无此能力，此处按需自建） */
+function makeSvgDoc() {
+  const doc: unknown = {
+    createElementNS(_ns: string, tag: string): SvgNode {
+      return makeSvgNode(tag);
+    },
+  };
+  return doc as Document;
+}
+
+test('buildCangIcon：导出并产出单 SVG 五角星收藏图标（供抖音入口复用）', () => {
+  const doc = makeSvgDoc();
+  const icon = buildCangIcon(doc) as unknown as SvgNode & { attrs: Record<string, string> };
+  assert.ok(icon, 'buildCangIcon 应可被导出调用');
+  assert.equal(icon.tag, 'svg');
+  assert.equal(icon.attrs['viewBox'], '0 0 24 24');
+  const star = icon.children.find((c) => c.tag === 'path');
+  assert.ok(star, 'SVG 内应含五角星 path');
+  assert.ok((star!.attrs['d'] ?? '').includes('M12 4.5'), '星 path 应含五角星起点 M12 4.5');
 });

@@ -44,16 +44,27 @@ npm run build
 #    - 点击"加载已解压的扩展程序"，选择本目录的 dist/ 文件夹
 ```
 
+### 从 CI 获取打包扩展（无需本地构建）
+
+每次 `main` 分支推送或手动触发后，GitHub Actions 会自动构建并上传扩展包：
+
+1. 打开仓库 Actions 页签 → `build-extension` → 选最新一次已完成运行
+2. 在底部 **Artifacts** 区域下载 `danmaku-box-vX.Y.Z-chrome-edge.zip`
+3. 解压（zip 根目录即 `manifest.json`），然后：
+
+   - **Chrome**：`chrome://extensions` → 开启"开发者模式" → "加载已解压的扩展程序" → 选择解压目录
+   - **Edge**：`edge://extensions` → 开启"开发人员模式" → "加载解压缩的扩展" → 选择解压目录
+
 ## 常用命令
 
-| 命令                  | 说明                                           |
-| ------------------- | -------------------------------------------- |
+| 命令                | 说明                                                      |
+| ------------------- | --------------------------------------------------------- |
 | `npm run check`     | 完整检查：typecheck → lint → test → build，任一失败即中止 |
-| `npm run typecheck` | TypeScript 类型检查（tsc --noEmit）                |
-| `npm run lint`      | ESLint 全量检查                                  |
-| `npm run test`      | 运行全部单元测试（node:test）                          |
-| `npm run build`     | esbuild 构建产物到 dist/                          |
-| `npm run format`    | Prettier 全量格式化（提交前建议执行）                      |
+| `npm run typecheck` | TypeScript 类型检查（tsc --noEmit）                       |
+| `npm run lint`      | ESLint 全量检查                                           |
+| `npm run test`      | 运行全部单元测试（node:test）                             |
+| `npm run build`     | esbuild 构建产物到 dist/                                  |
+| `npm run format`    | Prettier 全量格式化（提交前建议执行）                     |
 
 开发常用流程：先 `npm test` 跑单测，再 `npm run check` 做完整门禁；每次修改后建议运行 `npm run format` 保持格式统一。
 
@@ -91,4 +102,3 @@ node --test tests/storage/storage.service.test.ts   # 单文件测试
 ```
 
 > 新功能开发遵循 TDD：先写测试 → 运行失败 → 实现 → 通过 → 运行 `npm run check` 做完整门禁。
-

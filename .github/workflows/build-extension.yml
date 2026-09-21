@@ -1,0 +1,90 @@
+# 构建并打包 DanmakuBox 扩展，产出可直接在 Chrome/Edge 加载的 zip（Artifact）
+# - PR / push：仅校验（typecheck → lint → test）
+# - push main / 手动触发：校验通过后构建产物并上传 dist 为 Artifact
+#   下载 Artifact zip 后解压，manifest.json 即为扩展根目录。
+
+name: build-extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "code/danmaku-box/**"
+      - ".github/workflows/build-extension.yml"
+  pull_request:
+    paths:
+      - "code/danmaku-box/**"
+      - ".github/workflows/build-extension.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: 校验（typecheck/lint/test）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: code/danmaku-box
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: code/danmaku-box/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: 单元测试
+        run: npm test
+
+  package:
+    name: 打包（build + Artifact）
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: code/danmaku-box
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: code/danmaku-box/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建产物
+        run: npm run build
+
+      # 产物红线契约：缺失任一必选文件即失败（manifest 字段级契约由 tests/public/manifest.test.ts 兜底）
+      - name: 校验产物完整性
+        run: |
+          for f in manifest.json background.js content.js panel.html panel.css panel.js settings.html settings.css settings.js icons/icon16.png icons/icon32.png icons/icon48.png icons/icon128.png; do
+            test -f "dist/$f" || { echo "缺少 dist/$f"; exit 1; }
+          done
+
+      - name: 读取版本号
+        id: version
+        run: |
+          VER=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: 上传扩展 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: danmaku-box-v${{ steps.version.outputs.version }}-chrome-edge
+          path: code/danmaku-box/dist
+          if-no-files-found: error
+          retention-days: 30

@@ -487,14 +487,14 @@ sequenceDiagram
     BG->>M2: 读取分组 + 已收藏标记
     M2-->>BG: {groups(按 last_used_at 排序), hasThisContent}
     BG-->>M3: 菜单数据
-    M3->>M6: adapter.pauseDanmu()  (若为飘屏)
+    M3->>M6: freeze.freeze(item) → adapter.pauseDanmu(item)（WAAPI 单条冻结）
     M3-->>M3: 渲染菜单（预创建容器,仅更新数据/定位）
     U->>M3: 点击分组项
     M3->>BG: COLLECT_DANMAKU {content,groupId,platform,room}
     BG->>M2: 去重校验 → 写入（更新该组 last_used_at）
     M2-->>BG: {id, duplicate}
     BG-->>M3: {ok, duplicate}
-    M3->>M6: adapter.resumeDanmu()
+    M3->>M6: freeze.release() → adapter.resumeDanmu(item)（校验 uuid 后恢复）
     M3-->>M3: 关闭菜单,显示 toast
 ```
 
@@ -624,8 +624,8 @@ interface SiteAdapter {
   extract(element: Element): { text: string; hasRichContent: boolean };
   locateInput(): HTMLElement | null;             // 返回输入框（双形态归一）
   fill(text: string, mode: 'replace'|'append'): FillResult; // 写入+聚焦，不发送
-  pauseDanmu(): void;   // 飘屏暂停（仅飘屏路径）
-  resumeDanmu(): void;  // 飘屏恢复
+  pauseDanmu(target?: Element): void;   // 冻结飘屏（WAAPI 单条；无参 = no-op）
+  resumeDanmu(target?: Element): void;  // 恢复冻结（uuid/isConnected 校验后安全跳过）
   getLoginState(): 'logged_in' | 'logged_out' | 'unknown';  // 抖音必用
   getRoomId(): string;
 }
@@ -639,7 +639,7 @@ interface SiteAdapter {
 |----|------|
 | 选择器清单 | 引用《斗鱼 DOM 选择器字典》（selector-dict.md）；主干用 hi 级语义类名：`#js-barrage-list`/`.Barrage-list`（列表）、`.Barrage-listItem`（条目）、`.Barrage-content`（文本）、`.ChatSend-txt`（输入框，实测 DIV+contenteditable）、`.ChatSend-button`（发送按钮）、`.Barrage-nickName`、`.is-self` [Data-backed] |
 | 锁屏工具条遮挡 | 聊天区顶部 `.Barrage-topFloater` 会拦截其覆盖范围内弹幕的鼠标事件 [Data-backed: 实地验证]。处理：右键触发时检测命中元素是否被工具条覆盖，若覆盖则临时提升自定义菜单层级至工具条之上（z-index 高于浮层），并将菜单定位到鼠标坐标；同时对该条弹幕改用坐标级命中（`document.elementFromPoint`）确保取到弹幕文本 [Expert judgment] |
-| 飘屏暂停/恢复 | 飘屏元素类名易变（`.danmu-e7f029`→`.danmu-fbb2a3` 已变更 [Data-backed]），不做硬依赖：用 `[class*="danmu"]` 特征探测定位飘屏容器，通过注入 `animation-play-state: paused` 样式类暂停全部飘屏，右键完成或菜单关闭后移除该类恢复 |
+| 飘屏暂停/恢复 | 飘屏位移由 **Web Animations API** 驱动（实测 2026-09-17：`animationName: none`，注入 `animation-play-state` 无效）。命中目标为弹幕项 `[class*="danmuItem"]`（层容器 `[class*="danmu"]` 哈希类名 pointer-events:none 永不成为事件目标，宽选择器还会误命中 `.danmudiv-*` 等原生面板类名，均已弃用）。冻结仅作用于被点单条：`target.getAnimations()` 逐个 `pause()`，WeakMap 保存暂停时刻的 `{uuid, Animation[]}`；恢复前校验 `isConnected` + `data-comment-uuid` 一致（对象池复用竞态防护：同元素 1.5s 内 uuid 与文本均更换），不一致安全跳过。`pauseDanmu()` 无参调用保持 no-op（聊天区路径无飘屏可冻） [Data-backed: reports/danmu-context-menu-feasibility 3.2/3.5] |
 | 输入框双形态兼容 | `locateInput()` 先查 `.ChatSend-txt`，判断形态：若 `contenteditable=true` 走 DIV 分支（`innerText` 赋值 + `input` 事件），否则走 textarea 分支（原型 setter + `input` 事件）；当前线上为 DIV 形态，双分支保留以兼容历史版本 [Data-backed: 实地验证确认当前为 DIV 形态，selector-dict 记录双形态] |
 | 原生右键面板共存 | 自定义菜单在原生面板出现位置偏移展示（Q1 待登录态复测后定版，见第 10 章开放问题承接） |
 | 冒烟检测 | 实例化前检测 `.ChatSend-txt`（**必需锚点**，回填仅依赖输入框）；`.Barrage-list` 为**可选锚点**——随 WebSocket 首条消息延迟渲染（实测约 9s），缺失仅记录 `missing`、不判定适配失效 [Data-backed: 实地验证 + 2026-08 修复] |
