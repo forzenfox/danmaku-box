@@ -48,8 +48,11 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     return next;
   }
 
-  /** 回填前置校验：活动标签页 → 站点映射（适配状态改为实时判定，见 FILL_REQUEST） */
-  async function resolveFillTarget(): Promise<number> {
+  /** 回填前置校验：活动标签页 → 站点映射（适配状态改为实时判定，见 FILL_REQUEST）。
+   *  only 允许回填目标站点集合；调用方按需收窄（FILL 双站点 / GET_DOUYU_FAVORITE 仅斗鱼）。 */
+  async function resolveFillTarget(opts: {
+    allowedSites: ReadonlyArray<string>;
+  }): Promise<number> {
     const active = await tab.getActiveTab();
     if (!active) {
       throw new StoreError(ERROR_CODES.NO_ACTIVE_TAB, '未找到活动标签页');
@@ -58,7 +61,7 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     if (!info) {
       throw new StoreError(ERROR_CODES.SITE_UNSUPPORTED, '请在斗鱼直播间页面使用');
     }
-    if (info.site !== 'douyu') {
+    if (!opts.allowedSites.includes(info.site)) {
       throw new StoreError(ERROR_CODES.SITE_UNSUPPORTED, '请在斗鱼直播间页面使用');
     }
     return active.tabId;
@@ -106,7 +109,7 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
       if (!content || !content.trim()) {
         throw new StoreError(ERROR_CODES.INVALID_CONTENT, '弹幕内容为空');
       }
-      const tabId = await resolveFillTarget();
+      const tabId = await resolveFillTarget({ allowedSites: ['douyu', 'douyin'] });
       const response = await tab.sendToTab(tabId, MESSAGES.FILL_ACTION, {
         content,
         mode: p.mode as 'replace' | 'append',
@@ -155,8 +158,8 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
       return { tabId: active.tabId, site: info.site, status };
     },
     [MESSAGES.GET_DOUYU_FAVORITE]: async () => {
-      // 复用回填的 tab 前置校验：活动标签页必须为 douyu 站点
-      const tabId = await resolveFillTarget();
+      // 复用回填的 tab 前置校验：活动标签页必须为 douyu 站点（仅获取斗鱼官方收藏）
+      const tabId = await resolveFillTarget({ allowedSites: ['douyu'] });
       const response = await tab.sendToTab(tabId, MESSAGES.GET_DOUYU_FAVORITE, {});
       if (typeof response !== 'object' || response === null || !('ok' in response)) {
         throw new StoreError(ERROR_CODES.DELIVERY_FAILED, '直播页未就绪，请刷新后重试');

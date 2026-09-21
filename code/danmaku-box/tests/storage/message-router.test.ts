@@ -235,6 +235,17 @@ describe('FILL_REQUEST 回填路由', () => {
     assert.equal(r?.error?.code, ERROR_CODES.NEED_LOGIN);
   });
 
+  it('抖音直播间未登录：放行 douyin 并映射 NEED_LOGIN（不再走 SITE_UNSUPPORTED）', async () => {
+    const router = await makeFillRouter({
+      getActiveTab: async () => ({ tabId: 8, url: 'https://live.douyin.com/492632285289' }),
+      getTabSite: async () => ({ site: 'douyin', status: 'ok' }),
+      sendToTab: async () => ({ ok: false, truncated: false, reason: 'NEED_LOGIN' }),
+    });
+    const r = await router.handleMessage(msg(MESSAGES.FILL_REQUEST, fillPayload));
+    assert.equal(r?.ok, false);
+    assert.equal(r?.error?.code, ERROR_CODES.NEED_LOGIN);
+  });
+
   it('回填内容为空直接拒绝且不下发（INVALID_CONTENT）', async () => {
     const sent: string[] = [];
     const router = await makeFillRouter({
