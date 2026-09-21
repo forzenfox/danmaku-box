@@ -51,11 +51,25 @@ export function createDouyinAdapter(deps: DouyinAdapterDeps = {}): SiteAdapter {
       return { ok: input !== null || loginHint !== null, missing };
     },
 
-    findDanmakuItem(_target: Element): Element | null {
-      return notImpl();
+    findDanmakuItem(target: Element): Element | null {
+      // FR-D02：命中条目本身；非空过滤排除虚拟列表空占位（纯表情含 img 仍命中）
+      const item = target.closest(SELECTORS.item);
+      if (
+        item &&
+        ((item.textContent ?? '').trim() !== '' || item.querySelector('img, svg') !== null)
+      ) {
+        return item;
+      }
+      return null;
     },
-    extract(_item: Element): ExtractResult {
-      return notImpl();
+
+    extract(item: Element): ExtractResult {
+      // 仅取文本锚点，不回退 textContent（条目 textContent 含昵称，会污染收藏）。
+      // 无文本锚点 → 空串（表情/占位）：纯表情 text='' + hasRichContent=true。
+      const textAnchor = item.querySelector(SELECTORS.text);
+      const text = textAnchor ? (textAnchor.textContent ?? '').trim() : '';
+      const hasRichContent = item.querySelector('img, svg') !== null;
+      return { text, hasRichContent };
     },
     locateInput(): HTMLElement | null {
       return notImpl();
