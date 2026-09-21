@@ -1,7 +1,8 @@
-# 构建并打包 DanmakuBox 扩展，产出可直接在 Chrome/Edge 加载的 zip（Artifact）
+# 构建、打包并发布 DanmakuBox 扩展，产物可直接在 Chrome/Edge 加载
 # - PR / push：仅校验（typecheck → lint → test）
-# - push main / 手动触发：校验通过后构建产物并上传 dist 为 Artifact
-#   下载 Artifact zip 后解压，manifest.json 即为扩展根目录。
+# - push main / 手动触发：校验通过后构建产物并上传 dist 为 Artifact，
+#   同时发布 @forzenfox/danmaku-box 到 GitHub Packages（tarball 解压后目录即扩展根）
+#   下载 Artifact zip / Packages tarball 后解压，manifest.json 即为扩展根目录。
 
 name: build-extension
 
@@ -46,10 +47,13 @@ jobs:
         run: npm test
 
   package:
-    name: 打包（build + Artifact）
+    name: 打包（build + Artifact + 发布 Packages）
     if: github.event_name != 'pull_request'
     needs: validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     defaults:
       run:
         working-directory: code/danmaku-box
@@ -61,6 +65,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: code/danmaku-box/package-lock.json
+          registry-url: https://npm.pkg.github.com
+          scope: "@forzenfox"
 
       - name: 安装依赖
         run: npm ci
@@ -88,3 +94,13 @@ jobs:
           path: code/danmaku-box/dist
           if-no-files-found: error
           retention-days: 30
+
+      # 组装发布目录：复制 dist 产物并生成 scoped 临时 package.json
+      # 版本号为 0.1.0-ci.{短sha} 的 prerelease，保证每次发布唯一、不覆盖旧版本
+      - name: 组装发布包
+        run: |
+          rm -rf release-dist && mkdir release-dist && cp -r dist/. release-dist/
+          node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('package.json')).version;const sha=process.env.GITHUB_SHA.slice(0,7);const p={name:'@forzenfox/danmaku-box',version:v+'-ci.'+sha,private:false,files:['*'],publishConfig:{access:'public'},description:'DanmakuBox 扩展发布包：解压后目录即扩展根，可直接在 Chrome/Edge 开发者模式加载'};fs.writeFileSync('release-dist/package.json',JSON.stringify(p,null,2))"
+
+      - name: 发布到 GitHub Packages
+        run: npm publish release-dist --registry https://npm.pkg.github.com
