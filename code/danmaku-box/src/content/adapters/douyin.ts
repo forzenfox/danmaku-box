@@ -27,10 +27,6 @@ export interface DouyinAdapterDeps {
   reactWrite?: (input: HTMLElement, text: string) => boolean;
 }
 
-const notImpl = (): never => {
-  throw new Error('not implemented');
-};
-
 /** 默认 React 受控写入（Task 0 实测定稿：execCommand('insertText') 覆盖全选区，React 感知；
  *  直写 innerText + input 事件抖音不感知，不可照搬斗鱼范式）。
  *  注：写路径作用于真实 window/document（非 deps.doc）——生产环境 deps.doc===document、
@@ -112,10 +108,11 @@ export function createDouyinAdapter(deps: DouyinAdapterDeps = {}): SiteAdapter {
       return { ok, truncated };
     },
     pauseDanmu(_target?: Element): void {
-      return notImpl();
+      // FR-D04：抖音 PC 直播无独立飘屏弹幕层（登录/未登录两态实测确认），no-op
     },
+
     resumeDanmu(_target?: Element): void {
-      return notImpl();
+      // FR-D04：无冻结目标可恢复，no-op
     },
 
     getLoginState(): 'logged_in' | 'logged_out' | 'unknown' {

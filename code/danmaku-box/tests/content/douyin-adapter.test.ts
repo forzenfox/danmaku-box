@@ -309,3 +309,26 @@ describe('DouyinAdapter 回填编排（FR-D03 / AC-D03）', () => {
     assert.equal(wrote.length, 0);
   });
 });
+
+// ---------- 飘屏冻结/恢复 no-op（FR-D04：抖音无飘屏层） ----------
+
+describe('DouyinAdapter 飘屏降级（FR-D04）', () => {
+  const adapter = createDouyinAdapter();
+
+  it('pauseDanmu(target) 不触碰 getAnimations（无飘屏层）', () => {
+    let called = false;
+    const item = fakeEl('webcast-chatroom___item', { text: 'x' });
+    (item as unknown as { getAnimations: () => unknown[] }).getAnimations = () => {
+      called = true;
+      return [];
+    };
+    adapter.pauseDanmu(asEl(item));
+    assert.equal(called, false, '秒返回，不冻结任何动画');
+  });
+
+  it('resumeDanmu 亦为 no-op，无参/带参均不抛错', () => {
+    assert.doesNotThrow(() => adapter.pauseDanmu());
+    assert.doesNotThrow(() => adapter.resumeDanmu());
+    assert.doesNotThrow(() => adapter.resumeDanmu(asEl(fakeEl('webcast-chatroom___item'))));
+  });
+});
