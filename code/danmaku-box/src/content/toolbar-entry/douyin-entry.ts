@@ -10,6 +10,9 @@
 // 边界：不承载业务规则；不做回填；开关为页面内局部状态，不持久化。
 // 测试策略：依赖注入 doc/getURL/win，DOM 副作用留人工走查。
 
+/** 抖音聊区容器锚点选择器（装配互斥契约端口，见 index.assembly.test.ts）。 */
+export const DOUYIN_ENTRY_ANCHOR = '.webcast-chatroom';
+
 /** 内嵌样式：沿用斗鱼 `cang-` 前缀（同页单站点不冲突），挂载于 chatroom（absolute 包含块）内 */
 export const DOUYIN_ENTRY_STYLES = `
 .cang-pop {
@@ -118,7 +121,7 @@ export function createDouyinEntry(deps: DouyinEntryDeps): DouyinEntry {
   function build(): void {
     // 幂等守卫：已注入且仍在文档中不重复 build；断连（hydration 替换子树）允许重建
     if (btn?.isConnected || pop?.isConnected) return;
-    chatroom = doc.querySelector('.webcast-chatroom');
+    chatroom = doc.querySelector(DOUYIN_ENTRY_ANCHOR);
     if (!chatroom) return; // 聊区缺失：静默降级，零 DOM 创建
 
     // 双锚点分叉：已登录取 input-container，未登录取登录提示条

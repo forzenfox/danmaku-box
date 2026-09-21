@@ -7,6 +7,7 @@ import { createDouyuAdapter } from './adapters/douyu.ts';
 import { createDouyinAdapter } from './adapters/douyin.ts';
 import { createContextMenuController } from './context-menu.controller.ts';
 import { createToolbarEntry } from './toolbar-entry/toolbar-entry.ts';
+import { createDouyinEntry } from './toolbar-entry/douyin-entry.ts';
 import { safeSendMessage } from './extension-context.ts';
 import { createFillEngine } from './fill-engine.ts';
 import { handleFavoriteRequest } from './favorite-importer.ts';
@@ -34,13 +35,26 @@ if (detected) {
   // FILL_ACTION 执行器：service worker 路由的回填命令在本页执行（技术方案 7.2）
   const fillEngine = createFillEngine(detected.adapter);
 
-  // 工具栏「藏+」入口与官方锚定弹层（spec 2026-09-07，替代原右侧悬浮抽屉）。
-  // 开合为页面内局部状态，不经 service worker；不持久化。
+  // 工具栏「藏+」入口装配：按站点互斥分流（试点决策 2026-09-21，见 index.assembly.test.ts）。
+  // 抖音走 douyin-entry（锚点 .webcast-chatroom）；斗鱼走既有 toolbar-entry（锚点
+  // .ChatToolBar__left）；其他站点已被 detector 拦截，不会到达此分支。
+  // toolbarEntry 在外层构造（createToolbarEntry 构造本身无 DOM 副作用，build 才触及 DOM），
+  // 供下方 FILL_ACTION 收起定时器引用；挂载仍按站点互斥（抖音页只 mount douyinEntry）。
   const toolbarEntry = createToolbarEntry({
     doc: document,
     getURL: (p) => chrome.runtime.getURL(p),
   });
-  toolbarEntry.mount();
+  if (detected.site === 'douyin') {
+    // 抖音「藏+」入口（锚点实测 2026-09-21）：只挂 douyin-entry；
+    // 斗鱼 toolbar-entry 在抖音页无 .ChatToolBar__left 会静默降级，但按规范显式分流。
+    const douyinEntry = createDouyinEntry({
+      doc: document,
+      getURL: (p) => chrome.runtime.getURL(p),
+    });
+    douyinEntry.mount();
+  } else {
+    toolbarEntry.mount(); // 斗鱼（其他站点由 detector 拦截）
+  }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const type =
