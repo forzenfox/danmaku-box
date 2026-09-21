@@ -78,7 +78,7 @@ export interface ToolbarEntry {
  * 单一 SVG：viewBox 24×24，主图五角星 + 圆角底矩形占满，颜色由 `currentColor` 透出，
  * 按钮默认主色蓝 #1652f0，hover/打开态不变（与官方一致：颜色由父级 color 控制）。
  */
-function buildCangIcon(doc: Document): Element {
+export function buildCangIcon(doc: Document): Element {
   const NS = 'http://www.w3.org/2000/svg';
   const svg = doc.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
