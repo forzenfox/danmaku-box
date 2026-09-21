@@ -4,6 +4,7 @@
 
 import { MESSAGES } from '../shared/constants.ts';
 import { createDouyuAdapter } from './adapters/douyu.ts';
+import { createDouyinAdapter } from './adapters/douyin.ts';
 import { createContextMenuController } from './context-menu.controller.ts';
 import { createToolbarEntry } from './toolbar-entry/toolbar-entry.ts';
 import { safeSendMessage } from './extension-context.ts';
@@ -11,7 +12,10 @@ import { createFillEngine } from './fill-engine.ts';
 import { handleFavoriteRequest } from './favorite-importer.ts';
 import { createSiteDetector } from './site-detector.ts';
 
-const detector = createSiteDetector({ douyu: createDouyuAdapter() });
+const detector = createSiteDetector({
+  douyu: createDouyuAdapter(),
+  douyin: createDouyinAdapter(),
+});
 const detected = detector.detect(window.location, document);
 
 if (detected) {

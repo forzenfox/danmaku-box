@@ -124,6 +124,11 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
           '直播页已改版，回填暂不可用，请等待插件更新',
         );
       }
+      // 抖音未登录回填：输入框不渲染（NEED_LOGIN）→ 引导登录（区别于站点改版失效）
+      if (!fillResult.ok && fillResult.reason === 'NEED_LOGIN') {
+        void diagnostics?.log('fill', 'warn', `回填需登录（tab ${tabId}）`);
+        throw new StoreError(ERROR_CODES.NEED_LOGIN, '抖音直播需登录后才能回填，请登录后重试');
+      }
       void diagnostics?.log(
         'fill',
         fillResult.ok ? 'info' : 'warn',

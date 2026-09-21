@@ -223,6 +223,18 @@ describe('FILL_REQUEST 回填路由', () => {
     assert.equal(r?.error?.code, ERROR_CODES.ADAPTER_DOWN);
   });
 
+  it('FILL_ACTION 执行实时判定需登录（NEED_LOGIN）抛 NEED_LOGIN', async () => {
+    const router = await makeFillRouter({
+      getActiveTab: async () => ({ tabId: 7, url: 'https://live.douyin.com/492632285289' }),
+      // 抖音未登录：输入框不渲染 → 实时判定为需登录（区别于站点改版失效）
+      getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
+      sendToTab: async () => ({ ok: false, truncated: false, reason: 'NEED_LOGIN' }),
+    });
+    const r = await router.handleMessage(msg(MESSAGES.FILL_REQUEST, fillPayload));
+    assert.equal(r?.ok, false);
+    assert.equal(r?.error?.code, ERROR_CODES.NEED_LOGIN);
+  });
+
   it('回填内容为空直接拒绝且不下发（INVALID_CONTENT）', async () => {
     const sent: string[] = [];
     const router = await makeFillRouter({

@@ -6,6 +6,7 @@ import './panel.css';
 import '../shared/backup-ui.css';
 import {
   DANMAKU_MAX_LENGTH,
+  ERROR_CODES,
   GROUP_NAME_MAX_LENGTH,
   MESSAGES,
   STORAGE_KEYS,
@@ -768,7 +769,10 @@ async function fillDanmaku(item: Danmaku): Promise<void> {
   });
   if (r.ok && r.data?.ok) {
     toast(r.data.truncated ? '已回填（超长已截断），可直接发送' : '已回填，可直接发送');
-  } else if (r.error?.code === 'SITE_UNSUPPORTED') {
+  } else if (r.error?.code === ERROR_CODES.NEED_LOGIN) {
+    toast('抖音直播需登录后才能回填，请先登录', 'warn');
+    void chrome.tabs.create({ url: 'https://www.douyin.com/?show_login=1' });
+  } else if (r.error?.code === ERROR_CODES.SITE_UNSUPPORTED) {
     toast('请在斗鱼直播间页面使用', 'warn');
   } else if (r.error?.code === 'ADAPTER_DOWN') {
     toast('直播页已改版，回填暂不可用，请等待插件更新', 'warn');

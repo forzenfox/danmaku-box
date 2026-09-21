@@ -62,7 +62,7 @@ describe('存储 key 常量（技术方案 6.3）', () => {
 });
 
 describe('错误码常量（技术方案 5.2）', () => {
-  it('包含全部 18 个稳定错误码', () => {
+  it('包含全部 19 个稳定错误码', () => {
     assert.deepStrictEqual(ERROR_CODES, {
       STORAGE_FULL: 'STORAGE_FULL',
       INVALID_CONTENT: 'INVALID_CONTENT',
@@ -76,6 +76,7 @@ describe('错误码常量（技术方案 5.2）', () => {
       NO_ACTIVE_TAB: 'NO_ACTIVE_TAB',
       SITE_UNSUPPORTED: 'SITE_UNSUPPORTED',
       ADAPTER_DOWN: 'ADAPTER_DOWN',
+      NEED_LOGIN: 'NEED_LOGIN',
       NOT_LOGGED_IN: 'NOT_LOGGED_IN',
       NO_INPUT: 'NO_INPUT',
       DELIVERY_FAILED: 'DELIVERY_FAILED',
