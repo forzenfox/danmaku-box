@@ -44,15 +44,15 @@ npm run build
 #    - 点击"加载已解压的扩展程序"，选择本目录的 dist/ 文件夹
 ```
 
-### 从 CI / GitHub Packages 获取扩展（无需本地构建）
+### 从 Releases / Actions 获取扩展（无需本地构建）
 
-每次 `main` 分支推送或手动触发后，GitHub Actions 会自动校验、构建并发布扩展包。两种下载方式任选：
+推送 `v*` 标签（如 `v0.1.0`）或 main 分支更新后，GitHub Actions 会自动校验、构建并发布扩展包。两种下载方式任选：
 
-**方式一（推荐）：GitHub Packages**
+**方式一（推荐）：GitHub Releases 下载 zip**
 
-1. 打开仓库页面右侧 **Packages** → `@forzenfox/danmaku-box`
-2. 在 **Versions** 列表下载最新版本的 `.tgz`（tarball）文件
-3. 解压 tarball 后，解出的目录**即扩展根目录**（`manifest.json` 在根），然后：
+1. 打开仓库 **Releases** 页 → 找到对应版本（如 `v0.1.0`）
+2. 在 Assets 区下载 `danmaku-box-vX.Y.Z.zip`（zip 根目录即 `manifest.json`）
+3. 解压后加载：
 
    - **Chrome**：`chrome://extensions` → 开启"开发者模式" → "加载已解压的扩展程序" → 选择解压目录
    - **Edge**：`edge://extensions` → 开启"开发人员模式" → "加载解压缩的扩展" → 选择解压目录

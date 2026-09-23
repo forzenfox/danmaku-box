@@ -1,21 +1,15 @@
 # 构建、打包并发布 DanmakuBox 扩展，产物可直接在 Chrome/Edge 加载
-# - PR / push：仅校验（typecheck → lint → test）
-# - push main / 手动触发：校验通过后构建产物并上传 dist 为 Artifact，
-#   同时发布 @forzenfox/danmaku-box 到 GitHub Packages（tarball 解压后目录即扩展根）
-#   下载 Artifact zip / Packages tarball 后解压，manifest.json 即为扩展根目录。
+# - PR：仅校验（typecheck → lint → test）
+# - push main / 手动触发：校验通过后构建产物，上传 dist 为 Actions Artifact
+# - 推送 v* 标签：构建后打成 zip 并创建 GitHub Release（zip 根 = manifest.json，解压即加载）
 
 name: build-extension
 
 on:
   push:
     branches: [main]
-    paths:
-      - "code/danmaku-box/**"
-      - ".github/workflows/build-extension.yml"
+    tags: ["v*"]
   pull_request:
-    paths:
-      - "code/danmaku-box/**"
-      - ".github/workflows/build-extension.yml"
   workflow_dispatch:
 
 jobs:
@@ -47,30 +41,21 @@ jobs:
         run: npm test
 
   package:
-    name: 打包（build + Artifact + 发布 Packages）
-    if: github.event_name != 'pull_request'
+    name: 打包（build + Artifact）
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     defaults:
       run:
         working-directory: code/danmaku-box
     steps:
       - uses: actions/checkout@v4
 
-      # GITHUB_TOKEN 自 2025 年起被 GitHub Packages npm 注册表拒绝（401）；
-      # 发布必须使用带 Packages 写权限的 fine-grained PAT（仓库 secret NPM_TOKEN）
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: code/danmaku-box/package-lock.json
-          registry-url: https://npm.pkg.github.com
-          scope: "@forzenfox"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: 安装依赖
         run: npm ci
@@ -99,13 +84,52 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # 组装发布目录：复制 dist 产物并生成 scoped 临时 package.json
-      # 版本号为 0.1.0-ci.{短sha} 的 prerelease，保证每次发布唯一、不覆盖旧版本
-      - name: 组装发布包
-        run: |
-          rm -rf release-dist && mkdir release-dist && cp -r dist/. release-dist/
-          node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('package.json')).version;const sha=process.env.GITHUB_SHA.slice(0,7);const p={name:'@forzenfox/danmaku-box',version:v+'-ci.'+sha,private:false,files:['*'],repository:{type:'git',url:'https://github.com/forzenfox/danmaku-box.git'},publishConfig:{registry:'https://npm.pkg.github.com',access:'public'},description:'DanmakuBox 扩展发布包：解压后目录即扩展根，可直接在 Chrome/Edge 开发者模式加载'};fs.writeFileSync('release-dist/package.json',JSON.stringify(p,null,2))"
+  release:
+    name: 发布 Release（zip）
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: code/danmaku-box
+    steps:
+      - uses: actions/checkout@v4
 
-      # 目录参数必须带 ./ 前缀：npm 会把裸目录名（release-dist）解析为包名 spec 而非本地目录
-      - name: 发布到 GitHub Packages
-        run: npm publish ./release-dist --registry https://npm.pkg.github.com
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: code/danmaku-box/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建产物
+        run: npm run build
+
+      - name: 读取版本号
+        id: version
+        run: |
+          VER=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: 打包 zip（zip 根 = dist 内容）
+        run: |
+          cd dist
+          zip -r "../danmaku-box-v${{ steps.version.outputs.version }}.zip" .
+          cd ..
+
+      - name: 创建 Release 并上传 zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ github.ref_name }}"
+          ZIP="danmaku-box-v${VERSION}.zip"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "$TAG" "$ZIP" --repo "${{ github.repository }}" --title "DanmakuBox v${VERSION}" --generate-notes
+          fi
