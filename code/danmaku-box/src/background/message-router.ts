@@ -13,9 +13,10 @@ import type { Diagnostics } from './diagnostics.ts';
 import type { SettingsService } from './settings.service.ts';
 import { StoreError } from './store-error.ts';
 
-/** 活动标签页上下文（背景页装配 chrome.tabs + storage.session 实现） */
+/** 活动标签页上下文（背景页装配 chrome.tabs + storage.session 实现）。
+ *  仅暴露 tabId：站点判定走会话映射，不读取 tab.url，故无需 tabs 权限。 */
 export interface TabContext {
-  getActiveTab(): Promise<{ tabId: number; url: string } | null>;
+  getActiveTab(): Promise<{ tabId: number } | null>;
   getTabSite(tabId: number): Promise<{ site: string; status: string } | null>;
   sendToTab(tabId: number, type: string, payload: Record<string, unknown>): Promise<unknown>;
 }
@@ -50,9 +51,7 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
 
   /** 回填前置校验：活动标签页 → 站点映射（适配状态改为实时判定，见 FILL_REQUEST）。
    *  only 允许回填目标站点集合；调用方按需收窄（FILL 双站点 / GET_DOUYU_FAVORITE 仅斗鱼）。 */
-  async function resolveFillTarget(opts: {
-    allowedSites: ReadonlyArray<string>;
-  }): Promise<number> {
+  async function resolveFillTarget(opts: { allowedSites: ReadonlyArray<string> }): Promise<number> {
     const active = await tab.getActiveTab();
     if (!active) {
       throw new StoreError(ERROR_CODES.NO_ACTIVE_TAB, '未找到活动标签页');

@@ -10,7 +10,15 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "tabs", "sidePanel"],
+  "action": {
+    "default_title": "打开弹幕收藏夹",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "permissions": ["storage", "sidePanel"],
   "host_permissions": ["*://*.douyu.com/*", "*://*.douyin.com/*"],
   "background": {
     "service_worker": "background.js"

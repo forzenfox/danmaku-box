@@ -387,7 +387,7 @@ flowchart TB
 
 ### 5.4 网络接口约束
 
-本产品**不实现任何外部网络接口**：无 fetch/XHR/WebSocket 调用、无 CDN 资源加载、无埋点上报端点。manifest 仅声明 `storage`、`tabs`、`sidePanel` 权限与目标域名 `host_permissions`（见 9.2），从权限层面杜绝隐式网络行为 [Expert judgment]。
+本产品**不实现任何外部网络接口**：无 fetch/XHR/WebSocket 调用、无 CDN 资源加载、无埋点上报端点。manifest 仅声明 `storage`、`sidePanel` 权限与目标域名 `host_permissions`（见 9.2），从权限层面杜绝隐式网络行为 [Expert judgment]。
 
 ---
 
@@ -675,7 +675,8 @@ interface SiteAdapter {
 {
   "manifest_version": 3,
   "name": "弹幕收藏夹 DanmakuBox",
-  "permissions": ["storage", "tabs", "sidePanel"],
+  "permissions": ["storage", "sidePanel"],
+  "action": { "default_title": "打开弹幕收藏夹" },
   "host_permissions": ["*://*.douyu.com/*"],
   "content_scripts": [{
     "matches": ["*://*.douyu.com/*"],
@@ -688,9 +689,10 @@ interface SiteAdapter {
 ```
 
 - `storage`：本地持久化必需。
-- `tabs`：回填需在后台上下文查询任意活动标签页 URL 以路由 `FILL_REQUEST`（`activeTab` 仅在用户显式交互时授予单页临时权限，无法满足后台查询，且 host_permissions 覆盖域名的权限不自动授予 `tabs.query` 的 url 读取 [Research-backed: Chrome tabs 权限文档]）。
 - `sidePanel`：面板形态采用浏览器侧边栏（见 9.2.1 选型论证）。
-- **不申请** `contextMenus`（自定义菜单）、`scripting`（声明式注入）、`downloads`（面板页 `<a download>` 导出）、`cookies`（不代登/不触凭据）、任何网络权限。二期新增 `*://live.douyin.com/*` host 权限。
+- `action`（声明性字段，非权限）：**Edge 上架修订（2026-09-28）**。Edge 官方要求先在 manifest 声明 `action`，`sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` 才能让工具栏图标/键盘快捷键打开侧边栏；缺失时该调用无入口可挂钩（仅剩浏览器扩展中心的"在边栏中打开"兜底）。
+- **不申请** `tabs`（**Edge 上架修订（2026-09-28）移除**）：活动标签页路由只需 `tabId` + 会话映射（`resolveFillTarget`），`chrome.tabs.query/onRemoved/sendMessage/create` 均不要求该权限；原实现读取的 `tab.url` 从未被消费，属死代码，移除以满足最小权限原则与商店审核要求。
+- **不申请** `contextMenus`（自定义菜单）、`scripting`（声明式注入）、`downloads`（面板页 `<a download>` 导出）、`cookies`（不代登/不触凭据）、任何网络权限。`host_permissions` 现覆盖 `*://*.douyu.com/*` 与 `*://*.douyin.com/*`（抖音适配已完成，2026-09-21）。
 - `options_ui`：承载设置页（原型 D4 设置入口之一），`open_in_tab: true` 以独立标签页打开，避免弹窗内嵌布局受限。
 - 斗鱼页弹层形态改由内容脚本工具栏入口提供（见 M11）：注入的「藏+」锚定弹层仍复用 panel.html 作为 iframe 内容宿主，其所需 `web_accessible_resources`（panel.html）与 sidePanel 面板一致、保持不变。
 - 隐私声明在安装页明示"零上传、零埋点、纯本地"（PRD 第 7 章隐私）。
@@ -703,7 +705,7 @@ interface SiteAdapter {
 | default_popup | 否决 | popup 失焦即关：点击回填转向直播间瞬间，面板连同"已回填"提示一起消失，与回填主流程直接冲突；且 600px 高度上限压制弹幕列表 |
 | 独立标签页 | 备选 | 保留为兼容方案：sidePanel 不可用（旧版浏览器）或用户偏好时可由设置项切换 |
 
-实现要点：`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` 使插件图标点击即开侧边栏（service worker 初始化时设置）[Research-backed: Chrome Side Panel 官方文档]；面板宽约 720px 的布局要求以侧边栏默认宽度可承载（侧边栏宽度用户可拖拽调整，布局按自适应设计）。
+实现要点：`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` 使插件图标点击即开侧边栏（service worker 初始化时设置）[Research-backed: Chrome Side Panel 官方文档]；**前置条件：manifest 须声明 `action`（Edge 官方明确要求，2026-09-28 补齐）**；面板宽约 720px 的布局要求以侧边栏默认宽度可承载（侧边栏宽度用户可拖拽调整，布局按自适应设计）。
 
 ### 9.3 CSP 与安全
 

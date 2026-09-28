@@ -45,11 +45,13 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 // ── 回填路由的 tab 上下文（chrome.tabs + session 映射的真实装配）──
+// 不读取 tab.url（站点判定走会话映射），因此 manifest 不声明 tabs 权限；
+// onRemoved / query / sendMessage / create 均无需该权限。
 const tabContext: TabContext = {
   async getActiveTab() {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!tab || tab.id === undefined) return null;
-    return { tabId: tab.id, url: tab.url ?? '' };
+    return { tabId: tab.id };
   },
   async getTabSite(tabId) {
     const map = await readTabMap();

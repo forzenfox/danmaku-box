@@ -26,7 +26,7 @@ function msg(type: string, payload: object = {}) {
 }
 
 const fakeTab = {
-  getActiveTab: async () => null as { tabId: number; url: string } | null,
+  getActiveTab: async () => null as { tabId: number } | null,
   getTabSite: async () => null as { site: string; status: string } | null,
   sendToTab: async () => undefined,
 };
@@ -153,7 +153,7 @@ describe('写操作串行队列（技术方案 5.2 契约要点）', () => {
 // ── P4：回填路由与站点状态（依赖注入 fake tab 上下文）──────
 
 interface TabContext {
-  getActiveTab(): Promise<{ tabId: number; url: string } | null>;
+  getActiveTab(): Promise<{ tabId: number } | null>;
   getTabSite(tabId: number): Promise<{ site: string; status: string } | null>;
   sendToTab(tabId: number, type: string, payload: Record<string, unknown>): Promise<unknown>;
 }
@@ -172,7 +172,7 @@ describe('FILL_REQUEST 回填路由', () => {
   it('活动标签页为斗鱼直播间：即便快照为过期 adapter_down，仍实时下发 FILL_ACTION 并透传结果', async () => {
     const sent: Array<{ tabId: number; type: string; payload: Record<string, unknown> }> = [];
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       // 快照 status 为过期的 adapter_down，不再阻断回填（C：判定实时化）
       getTabSite: async () => ({ site: 'douyu', status: 'adapter_down' }),
       sendToTab: async (tabId, type, payload) => {
@@ -202,7 +202,7 @@ describe('FILL_REQUEST 回填路由', () => {
 
   it('活动页不在映射中（未适配站点）抛 SITE_UNSUPPORTED', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://example.com/' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       getTabSite: async () => null,
       sendToTab: async () => undefined,
     });
@@ -213,7 +213,7 @@ describe('FILL_REQUEST 回填路由', () => {
 
   it('FILL_ACTION 执行实时判定输入框缺失（NO_INPUT）抛 ADAPTER_DOWN', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       // 快照为 ok，但实时执行时输入框缺失 → 实时判定为适配失效（C）
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => ({ ok: false, truncated: false, reason: 'NO_INPUT' }),
@@ -225,7 +225,7 @@ describe('FILL_REQUEST 回填路由', () => {
 
   it('FILL_ACTION 执行实时判定需登录（NEED_LOGIN）抛 NEED_LOGIN', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://live.douyin.com/492632285289' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       // 抖音未登录：输入框不渲染 → 实时判定为需登录（区别于站点改版失效）
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => ({ ok: false, truncated: false, reason: 'NEED_LOGIN' }),
@@ -237,7 +237,7 @@ describe('FILL_REQUEST 回填路由', () => {
 
   it('抖音直播间未登录：放行 douyin 并映射 NEED_LOGIN（不再走 SITE_UNSUPPORTED）', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 8, url: 'https://live.douyin.com/492632285289' }),
+      getActiveTab: async () => ({ tabId: 8 }),
       getTabSite: async () => ({ site: 'douyin', status: 'ok' }),
       sendToTab: async () => ({ ok: false, truncated: false, reason: 'NEED_LOGIN' }),
     });
@@ -249,7 +249,7 @@ describe('FILL_REQUEST 回填路由', () => {
   it('回填内容为空直接拒绝且不下发（INVALID_CONTENT）', async () => {
     const sent: string[] = [];
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async (_tabId, type) => {
         sent.push(type);
@@ -266,7 +266,7 @@ describe('FILL_REQUEST 回填路由', () => {
 
   it('下发无回执（content script 未就绪）抛 DELIVERY_FAILED', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => undefined,
     });
@@ -277,7 +277,7 @@ describe('FILL_REQUEST 回填路由', () => {
 
   it('透传截断标记', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => ({ ok: true, truncated: true }),
     });
@@ -290,7 +290,7 @@ describe('GET_SITE_STATE 站点状态', () => {
   it('向 content 发送 PROBE_REQUEST 并返回实时适配状态', async () => {
     const sent: Array<{ tabId: number; type: string }> = [];
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       // 快照为过期 adapter_down，实时探测纠正为 ok
       getTabSite: async () => ({ site: 'douyu', status: 'adapter_down' }),
       sendToTab: async (tabId, type) => {
@@ -307,7 +307,7 @@ describe('GET_SITE_STATE 站点状态', () => {
 
   it('实时探测为 adapter_down 时以实时结果为准', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => ({ site: 'douyu', status: 'adapter_down' }),
     });
@@ -317,7 +317,7 @@ describe('GET_SITE_STATE 站点状态', () => {
 
   it('content 未回包（未就绪）时回退会话快照状态', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 7, url: 'https://www.douyu.com/1126960' }),
+      getActiveTab: async () => ({ tabId: 7 }),
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => undefined,
     });
@@ -338,7 +338,7 @@ describe('GET_SITE_STATE 站点状态', () => {
 
   it('未适配站点返回 unsupported', async () => {
     const router = await makeFillRouter({
-      getActiveTab: async () => ({ tabId: 9, url: 'https://example.com/' }),
+      getActiveTab: async () => ({ tabId: 9 }),
       getTabSite: async () => null,
       sendToTab: async () => undefined,
     });
@@ -453,7 +453,7 @@ describe('官方收藏路由', () => {
 
   it('活动 tab 为 douyu：下发 GET_DOUYU_FAVORITE 并透传 items', async () => {
     const tab = {
-      getActiveTab: async () => ({ tabId: 1, url: 'https://www.douyu.com/1' }),
+      getActiveTab: async () => ({ tabId: 1 }),
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => ({ ok: true, data: { items: [{ content: 'a' }] } }),
     };
@@ -466,7 +466,7 @@ describe('官方收藏路由', () => {
   it('活动 tab 非 douyu：返回 SITE_UNSUPPORTED 且不下发', async () => {
     let sent = false;
     const tab = {
-      getActiveTab: async () => ({ tabId: 1, url: 'https://example.com' }),
+      getActiveTab: async () => ({ tabId: 1 }),
       getTabSite: async () => ({ site: 'douyin', status: 'ok' }),
       sendToTab: async () => {
         sent = true;
@@ -482,7 +482,7 @@ describe('官方收藏路由', () => {
 
   it('content 回包错误：透传错误码（未登录）', async () => {
     const tab = {
-      getActiveTab: async () => ({ tabId: 1, url: 'https://www.douyu.com/1' }),
+      getActiveTab: async () => ({ tabId: 1 }),
       getTabSite: async () => ({ site: 'douyu', status: 'ok' }),
       sendToTab: async () => ({ ok: false, error: { code: 'NOT_LOGGED_IN', message: 'no-login' } }),
     };
