@@ -143,7 +143,9 @@ export async function importBackupFromFile(file: File): Promise<boolean> {
   );
   radioWrap.appendChild(mergeRadio);
   radioWrap.appendChild(overwriteRadio);
-  const intro = buildText(`检测到备份文件中有 ${preview.skipped} 条弹幕与当前库内容重复。`);
+  const intro = buildText(
+    `检测到备份文件中有 ${preview.skipped} 条重复弹幕（与当前库或备份内部重复）。`,
+  );
   const wrap = document.createElement('div');
   wrap.appendChild(intro);
   wrap.appendChild(radioWrap);

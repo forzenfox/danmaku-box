@@ -106,6 +106,39 @@ describe('mergeLibrary 合并算法（技术方案 7.4.2）', () => {
     assert.equal(r.skipped, 1);
   });
 
+  it('全库内容去重：当前库 A 组已有内容，备份 B 组重复内容跳过', () => {
+    const current = {
+      groups: [g(DEFAULT_GROUP_ID, '默认收藏', 0, true), g('g1', '应援', 1)],
+      danmaku: [d('a1', '666', 'g1')],
+    };
+    const incoming = {
+      groups: [g(DEFAULT_GROUP_ID, '默认收藏', 0, true), g('x2', '新组', 1)],
+      danmaku: [d('b1', '666', 'x2')],
+    };
+    const r = mergeLibrary(current, incoming);
+    assert.equal(r.added, 0);
+    assert.equal(r.skipped, 1);
+    assert.equal(r.danmaku.length, 1);
+    assert.equal(r.danmaku[0]?.group_id, 'g1');
+    assert.ok(!r.danmaku.some((x) => x.group_id === 'x2'));
+  });
+
+  it('全库内容去重：备份内部跨组重复仅保留先处理的一条', () => {
+    const current = {
+      groups: [g(DEFAULT_GROUP_ID, '默认收藏', 0, true)],
+      danmaku: [],
+    };
+    const incoming = {
+      groups: [g('x1', '组A', 0), g('x2', '组B', 1)],
+      danmaku: [d('b1', '666', 'x1'), d('b2', '666', 'x2')],
+    };
+    const r = mergeLibrary(current, incoming);
+    assert.equal(r.added, 1);
+    assert.equal(r.skipped, 1);
+    assert.equal(r.danmaku.length, 1);
+    assert.equal(r.danmaku[0]?.group_id, 'x1');
+  });
+
   it('引用未知分组的弹幕归入默认收藏（5.3 字段校验规则）', () => {
     const current = {
       groups: [g(DEFAULT_GROUP_ID, '默认收藏', 0, true)],
@@ -118,6 +151,22 @@ describe('mergeLibrary 合并算法（技术方案 7.4.2）', () => {
     const r = mergeLibrary(current, incoming);
     assert.equal(r.danmaku[0]?.group_id, DEFAULT_GROUP_ID);
     assert.equal(r.added, 1);
+  });
+
+  it('孤儿弹幕归入默认收藏前同样执行全库去重', () => {
+    const current = {
+      groups: [g(DEFAULT_GROUP_ID, '默认收藏', 0, true), g('g1', '应援', 1)],
+      danmaku: [d('a1', '孤儿', 'g1')],
+    };
+    const incoming = {
+      groups: [g(DEFAULT_GROUP_ID, '默认收藏', 0, true)],
+      danmaku: [d('b1', '孤儿', 'g_ghost')],
+    };
+    const r = mergeLibrary(current, incoming);
+    assert.equal(r.added, 0);
+    assert.equal(r.skipped, 1);
+    assert.equal(r.danmaku.length, 1);
+    assert.equal(r.danmaku[0]?.group_id, 'g1');
   });
 
   it('备份默认分组合并入当前默认分组（不产生第二个默认组）', () => {

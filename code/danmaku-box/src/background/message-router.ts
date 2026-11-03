@@ -1,4 +1,4 @@
-// 消息路由（技术方案 V0.2 5.2 消息协议的 service worker 侧实现）。
+// 消息路由（技术方案 V0.4 5.2 消息协议的 service worker 侧实现）。
 // 职责：接收统一信封 {type, payload}，分发至领域服务，返回统一信封结果。
 // 错误映射：StoreError → {ok:false, error:{code,message}}；
 // 读操作意外异常映射 READ_FAILED，写操作意外异常映射 WRITE_FAILED；
@@ -103,6 +103,8 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     [MESSAGES.DELETE_DANMAKU]: (p) => enqueueWrite(() => store.deleteDanmaku(p.ids as string[])),
     [MESSAGES.MOVE_DANMAKU]: (p) =>
       enqueueWrite(() => store.moveDanmaku(p.ids as string[], p.targetGroupId as string)),
+    [MESSAGES.DEDUPE_LIBRARY]: (p) =>
+      enqueueWrite(() => store.dedupeLibrary({ dryRun: Boolean(p.dryRun) })),
     [MESSAGES.FILL_REQUEST]: async (p) => {
       const content = p.content as string;
       if (!content || !content.trim()) {
@@ -241,6 +243,7 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     MESSAGES.UPDATE_DANMAKU,
     MESSAGES.DELETE_DANMAKU,
     MESSAGES.MOVE_DANMAKU,
+    MESSAGES.DEDUPE_LIBRARY,
     MESSAGES.IMPORT_FAVORITE_DANMAKU,
     MESSAGES.SAVE_SETTINGS,
   ]);

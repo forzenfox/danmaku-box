@@ -1,7 +1,7 @@
-// 全局常量：值与技术方案 V0.2 第 5.2 节消息协议、6.3 节存储 key、
+// 全局常量：值与技术方案 V0.4 第 5.2 节消息协议、6.3 节存储 key、
 // 6.2 节实体约束一一对应，改动前必须同步技术方案与测试。
 
-/** 消息协议消息名（技术方案 5.2，共 26 个） */
+/** 消息协议消息名（技术方案 5.2，共 27 个） */
 export const MESSAGES = {
   CS_READY: 'CS_READY',
   GET_MENU_CONTEXT: 'GET_MENU_CONTEXT',
@@ -16,6 +16,7 @@ export const MESSAGES = {
   UPDATE_DANMAKU: 'UPDATE_DANMAKU',
   DELETE_DANMAKU: 'DELETE_DANMAKU',
   MOVE_DANMAKU: 'MOVE_DANMAKU',
+  DEDUPE_LIBRARY: 'DEDUPE_LIBRARY',
   FILL_REQUEST: 'FILL_REQUEST',
   FILL_ACTION: 'FILL_ACTION',
   GET_SITE_STATE: 'GET_SITE_STATE',

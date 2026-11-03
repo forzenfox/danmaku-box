@@ -3,11 +3,11 @@
 | 文档属性 | 内容 |
 |---------|------|
 | 产品工作名 | 弹幕收藏夹（DanmakuBox） |
-| 文档版本 | V0.2（评审修订稿） |
+| 文档版本 | V0.4（去重优化修订稿） |
 | 撰写日期 | 2026-08-28 |
 | 撰写角色 | 技术负责人 |
-| 上游文档 | PRD V1.2（评审修订稿）、原型设计 V0.2 |
-| 文档状态 | 评审修订（技术评审 P1/P2 项已修正） |
+| 上游文档 | PRD V1.3（去重优化修订稿）、原型设计 V0.2 |
+| 文档状态 | 评审修订（V0.4 去重方案已确认） |
 
 ### 修订记录
 
@@ -16,6 +16,7 @@
 | V0.1 | 2026-08-28 | 初稿：基于 PRD V1.2 与实地验证报告编写 |
 | V0.2 | 2026-08-28 | 技术评审修订：数据模型补 GROUP.last_used_at 与消息协议 GET_MENU_CONTEXT（支撑右键菜单最近使用排序与已收藏标记）；面板形态评审裁决为 sidePanel 并补选型论证（否决 default_popup，保留独立页为备选）+ manifest 补 sidePanel/options_ui；SW 内存态迁移至 chrome.storage.session；Q3 与原型 D3 对齐（一期不做撤销）；里程碑补 P2.5 面板 UI 阶段；统一重复语义（duplicate 字段）；FILL_ACTION 补 DELIVERY_FAILED；写操作串行化机制明确为 Promise 队列；修正 mergeGroups 伪代码签名 |
 | V0.3 | 2026-09-07 | 内容脚本装配更新：斗鱼页入口由「右侧悬浮抽屉 DrawerHost」改为「工具栏『藏+』入口 + 官方锚定弹层宿主」（规格依据 specs/2026-09-07-toolbar-entry-design.md） |
+| V0.4 | 2026-11-03 | 去重优化：导入去重升级为全库内容维度（`IMPORT_BACKUP` 合并策略与 `IMPORT_FAVORITE_DANMAKU` 统一忽略 `group_id`，`overwrite` 策略不变）；新增 `DEDUPE_LIBRARY` 消息与 M2 `dedupeLibrary`（组内重复保留一条、跨组重复清除默认收藏、非默认分组间重复保留）；新增 7.4.3 全库去重算法，原 7.4.3 选择器探测顺延为 7.4.4；补充顶部常规操作区「去重」入口交互与测试要求 |
 
 > **证据标注约定**（全文统一使用）：
 > - **[Data-backed]**：来自 PRD、实地验证报告、选择器字典中的实测数据或已确认结论（如斗鱼弹幕 50 字上限、飘屏哈希类名变更、抖音未登录不渲染）。
@@ -30,7 +31,7 @@
 
 ### 1.1 目的与范围
 
-本文档描述"弹幕收藏夹（DanmakuBox）"浏览器扩展（Chrome Extension · Manifest V3）的系统实现方案，回答"**how to build**"：模块划分、接口契约、数据模型、站点适配、非功能保障与实施计划。不重复 PRD 的功能定义（"what"），PRD V1.2 为唯一需求来源。
+本文档描述"弹幕收藏夹（DanmakuBox）"浏览器扩展（Chrome Extension · Manifest V3）的系统实现方案，回答"**how to build**"：模块划分、接口契约、数据模型、站点适配、非功能保障与实施计划。不重复 PRD 的功能定义（"what"），PRD V1.3 为唯一需求来源。
 
 **一期范围**：斗鱼直播间（`*.douyu.com`）的弹幕右键收藏、弹幕库与分组管理、回填输入框、本地备份导出/导入。
 **二期范围**：抖音直播间（`live.douyin.com`）站点适配器，复用一期全部通用层能力。
@@ -68,9 +69,9 @@
 | 设计模块 | PRD 功能章节 | 对应性能目标 |
 |---------|-------------|-------------|
 | M1 StorageService | FR-05（存储层） | 写入失败可感知 |
-| M2 DanmakuStore | FR-02 / FR-03 / FR-05 | 千条搜索 ≤300ms |
+| M2 DanmakuStore | FR-02 / FR-03 / FR-05 / FR-07 | 千条搜索 ≤300ms |
 | M3 ContextMenuController | FR-01 / FR-06 | 右键菜单 ≤100ms |
-| M4 PanelUI | FR-02 / FR-03 | 面板打开 ≤500ms |
+| M4 PanelUI | FR-02 / FR-03 / FR-07 | 面板打开 ≤500ms |
 | M5 FillEngine | FR-04 | 回填 ≤200ms |
 | M6 SiteAdapter（Douyu/Douyin） | FR-06 / FR-01 / FR-04 | 适配状态实时可查 |
 | M7 SiteDetector | FR-06 | 探测开销不影响页面 |
@@ -78,7 +79,7 @@
 | M9 SettingsService | FR-04 / FR-02（last_selected_group） | — |
 | M10 Diagnostics | 第 7 章可观测性 | 诊断信息可导出 |
 
-> 走查：十个模块覆盖 PRD 六个功能需求（FR-01~06）的全部实现面；性能目标逐项落到承载模块；M6 作为一期（斗鱼）与二期（抖音）的切换边界，支撑 PRD G5 复用要求。
+> 走查：十个模块覆盖 PRD 七个功能需求（FR-01~07）的全部实现面；性能目标逐项落到承载模块；M6 作为一期（斗鱼）与二期（抖音）的切换边界，支撑 PRD G5 复用要求。
 
 ---
 
@@ -187,11 +188,11 @@ flowchart TB
 |------|------|
 | 职责 | 维护弹幕、分组、查询三类核心领域操作。 |
 | 输入 | 弹幕对象、分组对象、查询参数（分组 id、关键词、排序键、页码） |
-| 输出 | 弹幕列表、分组列表、去重判定、分页结果、变更汇总 |
+| 输出 | 弹幕列表、分组列表、去重判定与全库去重报告、分页结果、变更汇总 |
 | 依赖 | M1 StorageService、M9 SettingsService |
 | 边界 | 不接触 DOM；不负责备份文件 I/O；不触发回填 |
 
-> 说明：本模块部署于 service worker，作为存储唯一入口（见 3.2）。CRUD、分组、搜索、排序、去重、分页六类能力均在此实现，UI 与页面侧只经消息调用。
+> 说明：本模块部署于 service worker，作为存储唯一入口（见 3.2）。CRUD、分组、搜索、排序、去重、分页六类能力均在此实现，UI 与页面侧只经消息调用。去重存在两种语义：右键收藏/手动新建为"内容 + 分组"双重维度（允许同一文案存在于多个自定义分组）；合并导入、官方收藏导入与顶部「去重」为"全库内容"维度（忽略 `group_id`）。
 
 ### M3 右键收藏 ContextMenuController
 
@@ -209,7 +210,7 @@ flowchart TB
 |------|------|
 | 职责 | 渲染弹幕库面板的可视界面。 |
 | 输入 | 用户操作事件、数据快照 |
-| 输出 | 数据查询请求、收藏/回填/备份/设置命令、诊断导出请求 |
+| 输出 | 数据查询请求、收藏/回填/备份/去重/设置命令、诊断导出请求 |
 | 依赖 | M2/M5/M8/M9/M10（均经消息）、chrome.action |
 | 边界 | 不含业务规则；不读写站点 DOM；不持久化任何状态（仅展示） |
 
@@ -247,11 +248,11 @@ flowchart TB
 
 | 要素 | 内容 |
 |------|------|
-| 职责 | 执行弹幕库备份文件的导出、导入、合并。 |
+| 职责 | 执行弹幕库备份文件的导出、导入、合并与全库内容去重预检。 |
 | 输入 | 备份文件内容、导入策略（合并/覆盖） |
-| 输出 | 导出数据对象、导入汇总（新增/跳过/合并分组） |
+| 输出 | 导出数据对象、导入汇总（新增/跳过/合并分组）、去重预演报告 |
 | 依赖 | M2 DanmakuStore、M9 SettingsService |
-| 边界 | 不负责文件下载 UI；不执行破坏性操作前的确认逻辑（由调用方保证） |
+| 边界 | 不负责文件下载 UI；不执行破坏性操作前的确认逻辑（由调用方保证）；合并算法只产出结果数据，落盘经 M2 |
 
 ### M9 设置服务 SettingsService
 
@@ -298,7 +299,7 @@ flowchart TB
 | # | 接口 | 调用方 → 被调方 | 载体 |
 |---|------|----------------|------|
 | I1 | `store.read/write/remove/usage` | 各模块 → M1 | 进程内调用（service worker 内） |
-| I2 | `store.*`（CRUD/查询/去重/分页） | 消息路由 → M2 | 进程内调用 |
+| I2 | `store.*`（CRUD/查询/组内去重/全库去重/分页） | 消息路由 → M2 | 进程内调用 |
 | I3 | `collect(content, groupId, platform, room)` | M3 → M2 | 消息（经 service worker） |
 | I4 | `fill(content, mode)` | M4 → M5 | 消息（经 service worker 路由） |
 | I5 | `adapter.extract/locate/fill/pause/resume/status` | M3/M5 → M6 | 进程内调用（content script 内） |
@@ -331,6 +332,7 @@ flowchart TB
 | `UPDATE_DANMAKU` | panel→background | `{id, content}` | `{}` | `NOT_FOUND`、`INVALID_CONTENT` |
 | `DELETE_DANMAKU` | panel→background | `{ids}` | `{deleted}` | `NOT_FOUND` |
 | `MOVE_DANMAKU` | panel→background | `{ids, targetGroupId}` | `{moved}` | `NOT_FOUND` |
+| `DEDUPE_LIBRARY` | panel→background | `{dryRun?}` | `{scanned, removed, withinGroupRemoved, defaultGroupRemoved, keptCrossGroupContents}` | `READ_FAILED`、`WRITE_FAILED` |
 | `FILL_REQUEST` | panel→background | `{content, mode}` | `{ok, truncated, reason}` | `NO_ACTIVE_TAB`、`SITE_UNSUPPORTED`、`ADAPTER_DOWN`、`NOT_LOGGED_IN`、`NO_INPUT` |
 | `FILL_ACTION` | background→content | `{content, mode}` | `{ok, truncated, reason}` | 同上（回执给 background 再回 panel） |
 | `GET_SITE_STATE` | panel→background | `{}` | `{tabId, site, status, reason}` | `NO_ACTIVE_TAB` |
@@ -349,14 +351,16 @@ flowchart TB
 - `GET_SITE_STATE` 面板打开时经 `PROBE_REQUEST` 向 content 实时探测当前 DOM 的适配状态，覆盖注入快照的滞后（如弹幕列表延迟渲染导致的过期 `adapter_down`）；content 未回包（未就绪）时回退会话快照状态。
 - `GET_MENU_CONTEXT` 为右键菜单渲染的数据来源：content script 捕获 `contextmenu` 后调用，一次取全"分组列表（含 last_used_at 排序）+ 该弹幕内容的已收藏标记（hasThisContent）"，菜单按返回数据渲染，服务 PRD FR-01"最近使用排序"与"已收藏标记"两项交互 [Data-backed: PRD FR-01]。空文本/超长弹幕的置灰判定在 content script 本地完成（不依赖此消息）。
 - `FILL_ACTION` 下发失败（content script 未就绪、已卸载、tab 已关闭）返回 `DELIVERY_FAILED`，面板提示"直播页未就绪，请刷新后重试" [Expert judgment]。
-- 重复语义统一：右键收藏与手动新建的重复判定均为"返回字段 duplicate=true（不视为错误）"；错误码 `DUPLICATE` 从 `CREATE_DANMAKU` 中移除，两入口行为一致。
-- 写操作串行化机制：service worker 内维护 Promise 链式队列，所有写消息（COLLECT/CREATE/UPDATE/DELETE/MOVE/REORDER/IMPORT/SAVE_SETTINGS）入队后顺序执行，避免多面板窗口并发写相互覆盖 [Expert judgment]。
+- 重复语义统一：右键收藏与手动新建的重复判定均为"返回字段 duplicate=true（不视为错误）"；错误码 `DUPLICATE` 从 `CREATE_DANMAKU` 中移除，两入口行为一致。重复判定分两类：收藏/新建为"内容 + 分组"双重维度；合并导入、官方收藏导入与顶部去重为"全库内容"维度（trim 后内容相等即可，忽略 `group_id`，全角/半角与大小写不折叠）。
+- 写操作串行化机制：service worker 内维护 Promise 链式队列，所有写消息（COLLECT/CREATE/UPDATE/DELETE/MOVE/REORDER/DEDUPE/IMPORT/IMPORT_FAVORITE/SAVE_SETTINGS）入队后顺序执行，避免多面板窗口并发写相互覆盖 [Expert judgment]。
+- `DEDUPE_LIBRARY` 契约：`dryRun=true` 只计算并返回去重报告，不落盘，用于面板确认弹窗展示预计删除条数；`dryRun=false` 重算后一次落盘，零删除时不写库。执行前由面板（调用方）自动下载当前库临时备份，满足 PRD 第 7 章可挽回要求。全库去重规则见 7.4.3。
+- 导入去重契约：`IMPORT_BACKUP` 的 `merge` 策略与 `IMPORT_FAVORITE_DANMAKU` 均为全库内容去重——当前库任一分组已有相同内容、或本次导入批次内部已有相同内容时计 skipped，不写入目标分组；`overwrite` 策略不做内容去重，保持"以备份为准"语义。
 - SW 内存态持久化：`CS_READY` 维护的 `tabId→site` 映射与分组快照缓存写入 `chrome.storage.session`（随浏览器会话存续，SW 回收重启后自动恢复读取，不落磁盘）；SW 冷启动时若无映射（浏览器整体重启），由 `tabs.query` + 各已打开 tab 的 content script 重新上报 `CS_READY` 重建 [Expert judgment]。
 - 错误码统一为稳定字符串，UI 侧映射为中文提示，不含堆栈细节，避免向页面上下文泄露内部信息。
 - **存储变更驱动刷新**：面板监听 `chrome.storage.onChanged`（仅 local 区 + 本插件 key `db.danmaku`/`db.groups`，防抖 150ms 合并），content script 右键收藏等外部写入后自动刷新当前分组列表与分组计数，且保留用户的分组/关键词/排序状态。面板自身增删改后不再主动 `loadList`，统一由此驱动，避免重复加载（仅 `loadGroups` 即时更新分组 UI）[Data-backed: 2026-08 实测右键收藏后列表不自动刷新]。`selectAndLoad`（切换分组）等用户交互路径仍主动加载。
 - **可见性补刷（2026-09-03 跨 tab 同步缺陷修复）**：`chrome.storage.onChanged` 为事件广播，但后台/冻结 tab 中的弹层宿主面板（toolbar entry popup）可能丢失该事件（Data-backed: 2026-09-03 实测页面 A 添加弹幕后，切换至已打开的页面 B 弹层宿主列表不刷新）。新增 `visibility-refresher`：文档 `visibilitychange→visible` 或窗口 `focus`（均文档可见态）时，300ms 防抖合并后触发与存储变更同路径的 `refreshPanel()`（`loadGroups`+`loadList`+`renderUsage`），保留用户筛选状态。事件驱动、无轮询；存储监听仍为前台主信号，可见性刷新为补漏信号。
 
-**官方收藏导入接口核验（2026-09-02 实机）**：端点 `GET https://www.douyu.com/japi/privateCustomApi/favorite/web/bulletscreen/query`，cookie 鉴权、无签名参数、无网络分页（一次 query 返回全量，前端虚拟滚动仅窗口化渲染）；未登录时官方前端不发请求直接弹登录框，插件侧以 `acf_uid` cookie 探测登录态（`src/content/favorite-importer.ts`）。导入边界仅官方云端收藏，不含 DouyuEx 本地扩展库。
+**官方收藏导入接口核验（2026-09-02 实机）**：端点 `GET https://www.douyu.com/japi/privateCustomApi/favorite/web/bulletscreen/query`，cookie 鉴权、无签名参数、无网络分页（一次 query 返回全量，前端虚拟滚动仅窗口化渲染）；未登录时官方前端不发请求直接弹登录框，插件侧以 `acf_uid` cookie 探测登录态（`src/content/favorite-importer.ts`）。导入边界仅官方云端收藏，不含 DouyuEx 本地扩展库。导入落库按全库内容去重（忽略分组），目标分组或其它任一分组已存在相同内容时跳过（PRD FR-07）。
 
 **导入冲突策略弹窗单选修复（2026-09-03 实测漏洞）**：`buildRadio` 构建了 `<label><input/><span>文案</span></label>` 完整结构却只 `return input`，label 与文案 span 游离于 DOM 外被丢弃，弹窗中仅见空圆圈、选项文字不可见。修复：返回整体 `label`（`appendChild(label)` 挂载），取值改为 `label.querySelector('input')!.checked`。同时给文案 span 加 `class="dk-radio-label"` + `color/font-size: inherit`，双重防止外部 CSS reset 隐藏。
 
@@ -545,20 +549,20 @@ sequenceDiagram
         M8->>M2: 生成当前库临时备份(可下载) → 整体替换
         M8-->>P: {added, skipped}
     else 合并策略
-        M8->>M2: 按名称合并分组 → 组内去重写入
+        M8->>M2: 按名称合并分组 → 全库内容去重写入
         M8-->>P: {added, skipped, mergedGroups}
     end
 ```
 
-**图 5 走查**：导入先做格式与版本校验，失败即止；覆盖策略执行前强制产出当前库临时备份文件供下载（PRD FR-05 可挽回要求）；合并策略按"同名分组按名称合并、设置以当前库为准"的规则执行（PRD FR-05），重复条目跳过。
+**图 5 走查**：导入先做格式与版本校验，失败即止；覆盖策略执行前强制产出当前库临时备份文件供下载（PRD FR-05 可挽回要求）；合并策略按"同名分组按名称合并、全库内容去重（忽略分组）、设置以当前库为准"的规则执行（PRD FR-05），重复条目跳过。
 
 ### 7.4 非平凡算法伪代码
 
-**7.4.1 去重算法（内容 + 分组 双重维度）**
+**7.4.1 收藏/新建去重算法（内容 + 分组 双重维度）**
 
 ```
 function findDuplicate(danmakuList, content, groupId):
-    normalized = normalize(content)          // 去除首尾空白；全角/半角不做折叠[Expert judgment]
+    normalized = normalize(content)          // 去除首尾空白；全角/半角、大小写不折叠[Expert judgment]
     for item in danmakuList:
         if item.group_id == groupId:
             if normalize(item.content) == normalized:
@@ -566,36 +570,92 @@ function findDuplicate(danmakuList, content, groupId):
     return null
 
 // 使用点：右键收藏、面板手动新建均调用；命中则提示"该分组已收藏此弹幕"，不写入
+// 边界：本算法保留"允许同一文案存在于多个自定义分组"的产品能力；
+//      导入与顶部去重使用全库内容维度（见 7.4.2 / 7.4.3），不得复用本函数
 ```
 
-**7.4.2 同名分组合并算法（导入-合并）**
+**7.4.2 导入合并算法（同名分组合并 + 全库内容去重）**
 
 ```
-function mergeGroups(currentGroups, currentDanmaku, incomingGroups, incomingDanmaku):
-    result = copy(currentGroups)                          // 分组结果
-    danmakuByGroup = groupBy(currentDanmaku, group_id)    // 现有弹幕按组索引
-    nameIndex = { g.name -> g.id for g in result }        // 现有组按名称建索引
+function mergeLibrary(currentGroups, currentDanmaku, incomingGroups, incomingDanmaku):
+    resultGroups = copy(currentGroups)                     // 分组结果
+    resultDanmaku = copy(currentDanmaku)                   // 弹幕结果
+    seenContents = { normalize(d.content) for d in resultDanmaku }  // 全库内容索引，忽略 group_id
+    nameIndex = { g.name -> g.id for g in resultGroups }   // 现有组按名称建索引
     addCount = 0; skipCount = 0; merged = 0
 
     for g in incomingGroups (按 order 顺序):
         if nameIndex has g.name:
-            targetId = nameIndex[g.name]                  // 按名称合并到现有组
+            targetId = nameIndex[g.name]                   // 按名称合并到现有组
             merged += 1
         else:
-            targetId = newId()
-            result.append({ id: targetId, name: g.name, order: nextOrder(result) })
+            targetId = newId("g")
+            resultGroups.append({ id: targetId, name: g.name, order: nextOrder(resultGroups) })
             nameIndex[g.name] = targetId
 
         for d in incomingDanmaku where d.group_id == g.id:
-            if findDuplicate(danmakuByGroup[targetId], d.content, targetId) == null:
-                danmakuByGroup[targetId].append(d)
-                addCount += 1
-            else:
+            key = normalize(d.content)
+            if key in seenContents:                        // 当前库任一分组已有，或本批次已导入
                 skipCount += 1
-    return { groups: result, added: addCount, skipped: skipCount, mergedGroups: merged }
+                continue
+            seenContents.add(key)
+            resultDanmaku.append({ ...d, group_id: targetId })
+            addCount += 1
+
+    // 引用未知分组的孤儿弹幕：归入默认收藏前执行同一全库去重
+    for d in incomingDanmaku where d.group_id not in knownGroupIds(resultGroups):
+        key = normalize(d.content)
+        if key in seenContents:
+            skipCount += 1
+        else:
+            seenContents.add(key)
+            resultDanmaku.append({ ...d, group_id: DEFAULT_GROUP_ID })
+            addCount += 1
+
+    return { groups: resultGroups, danmaku: resultDanmaku,
+             added: addCount, skipped: skipCount, mergedGroups: merged }
 ```
 
-**7.4.3 选择器多候选探测策略**
+> 口径：`normalize` 仅去首尾空白，空文本同样参与比对（导入为增量操作，不删除既有数据）；备份内部跨分组重复时，按 `incomingGroups` 的 `order` 顺序"先到先得"，后续同内容条目计 skipped。
+
+**7.4.3 全库去重算法（顶部「去重」按钮）**
+
+```
+function planDedupe(danmakuList):
+    buckets = groupBy(danmakuList where normalize(content) != "", normalize(content))  // 空文本不参与
+    deleteIds = []
+    withinGroupRemoved = 0; defaultGroupRemoved = 0; keptCrossGroupContents = 0
+
+    for (key, entries) in buckets where entries.length >= 2:
+        // a. 组内重复：每个分组保留 1 条（created_at 最早；同时间/缺失保留先出现的一条）
+        byGroup = groupBy(entries, group_id)
+        for groupEntries in byGroup:
+            keep = minBy(groupEntries, created_at, then storageIndex)
+            deleteIds += groupEntries - keep
+            withinGroupRemoved += groupEntries.length - 1
+
+        // b. 跨组重复：仅当包含默认收藏时删除默认收藏中的条目；
+        //    非默认分组之间的重复不做处理（保留原状）
+        remaining = entries where id not in deleteIds
+        groupIds = distinct(remaining.group_id)
+        if groupIds.size >= 2:
+            if DEFAULT_GROUP_ID in groupIds:
+                removed = remaining where group_id == DEFAULT_GROUP_ID
+                deleteIds += removed
+                defaultGroupRemoved += removed.length
+            else:
+                keptCrossGroupContents += 1  // 该内容仍跨多个非默认分组，保留
+
+    return { deleteIds, withinGroupRemoved, defaultGroupRemoved, keptCrossGroupContents }
+
+// dedupeLibrary(dryRun):
+//   plan = planDedupe(全库弹幕)
+//   report = { scanned: 全库总数, removed: plan.deleteIds.length, ...plan 计数 }
+//   dryRun=true  → 只返回 report，不写库（面板确认弹窗展示预计删除条数）
+//   dryRun=false → 按 plan.deleteIds 过滤后一次落盘；deleteIds 为空时不写库
+```
+
+**7.4.4 选择器多候选探测策略**
 
 ```
 function probeSelectors(candidates, root):
@@ -763,7 +823,7 @@ dev 流程（重载扩展 / service worker 失效）后，老 content script 仍
 | # | 风险 | 概率 | 影响 | 缓解措施 |
 |---|------|------|------|---------|
 | R1 | Chrome Web Store 上架审核风险（权限/隐私披露审查） | 中 | 上架延迟或驳回 | 权限最小化（9.2）；安装页隐私披露；审核材料提前准备 [Research-backed: Chrome Web Store 开发者政策要求权限最小化与隐私披露] |
-| R2 | 站点选择器变更（斗鱼哈希类名、抖音改版频繁） | 高 | 局部能力失效 | hi 级语义类名主干 + 哈希类名多候选特征探测（7.4.3）；选择器集中配置便于热修 [Data-backed: 飘屏类名已实测变更] |
+| R2 | 站点选择器变更（斗鱼哈希类名、抖音改版频繁） | 高 | 局部能力失效 | hi 级语义类名主干 + 哈希类名多候选特征探测（7.4.4）；选择器集中配置便于热修 [Data-backed: 飘屏类名已实测变更] |
 | R3 | 平台整站改版导致核心锚点失效 | 中 | 收藏/回填不可用 | 冒烟检测 + 两级降级提示（9.6）；插件更新日志标注恢复状态 [Data-backed: PRD FR-06] |
 | R4 | storage 容量超限（收藏量极大） | 低 | 写入失败丢数据 | 用量常驻显示 + 80% 告警引导导出清理；写入失败明确 toast 不静默 [Data-backed: PRD FR-05] |
 | R5 | 斗鱼原生右键面板共存形态（Q1）未定 | 中 | 一期右键交互返工 | 登录态复测后定版（见 10.2）；实现上保留菜单偏移方案可配置 |
@@ -798,12 +858,12 @@ dev 流程（重载扩展 / service worker 失效）后，老 content script 仍
 |------|------|--------|---------|
 | P0 | 脚手架 | manifest.json、目录结构（content/background/panel/settings/shared）、sidePanel 骨架、options_ui、测试框架、TS 编译配置 | 空扩展可加载；图标点击打开侧边栏面板；测试桩可运行 |
 | P1 | 存储服务 | M1 StorageService 实现（含 storage.session 持久化层） | 单元测试（mock chrome.storage）：读写/删除/用量/失败路径/会话态恢复 |
-| P2 | 弹幕库核心 | M2 DanmakuStore（CRUD/分组/搜索/排序/去重/分页/last_used_at 维护）、M9 SettingsService | 单元测试覆盖：去重算法、同名分组合并、分页边界、50 分组上限、排序正确性 |
-| P2.5 | 面板 UI | M4 PanelUI（sidePanel 面板页：列表/搜索/分组导航/批量管理/存储用量区 + 消息协议对接） | 面板契约测试（LIST_DANMAKU/GET_GROUPS 等全消息）+ 人工走查 G2 操作路径 |
+| P2 | 弹幕库核心 | M2 DanmakuStore（CRUD/分组/搜索/排序/去重/分页/last_used_at 维护）、M9 SettingsService | 单元测试覆盖：收藏/新建组内去重、全库去重算法（组内重复保留一条、跨组重复清除默认收藏、非默认分组间保留、空文本跳过）、分页边界、50 分组上限、排序正确性 |
+| P2.5 | 面板 UI | M4 PanelUI（sidePanel 面板页：列表/搜索/分组导航/批量管理/存储用量区 + 消息协议对接） | 面板契约测试（LIST_DANMAKU/GET_GROUPS/DEDUPE_LIBRARY 等全消息）+ 人工走查 G2 操作路径与去重确认/汇总流程 |
 | P3 | 右键收藏 | M3 ContextMenuController + M7 SiteDetector 骨架 + GET_MENU_CONTEXT 链路 | content script 集成测试：事件捕获、菜单渲染（含已收藏标记与最近使用排序）、收藏命令链路 |
 | P4 | 回填 | M5 FillEngine + DouyuAdapter 输入框适配 | 斗鱼页面人工验证 + 回填契约测试（contenteditable 分支） |
 | P5 | 适配器完善 | DouyuAdapter 完整（飘屏暂停/恢复、锁屏工具条遮挡、双形态输入框、冒烟检测） | 斗鱼直播间人工走查：聊天区收藏、飘屏收藏、遮挡场景、回填双形态 |
-| P6 | 备份 | M8 BackupService（导出/导入/合并/覆盖/迁移）+ 设置页（options_ui） | 单元测试（合并算法、跨版本迁移失败不落盘）+ 面板人工验证导出导入 |
+| P6 | 备份 | M8 BackupService（导出/导入/合并/覆盖/迁移）+ 设置页（options_ui） | 单元测试（合并算法全库内容去重、备份内部跨组重复、官方收藏导入全库去重、跨版本迁移失败不落盘）+ 面板人工验证导出导入与去重 |
 | P7 | 验证 | 性能测试、兼容性回归、诊断导出、M10 收尾 | 性能打点对照 PRD 第 7 章；Chrome/Edge 双内核冒烟；**登录态复测（Q1/Q5）** 前置验收 |
 | P8 | 工具栏入口与锚定弹层（替代 drawer） | 契约测试 + ToolbarEntry 注入 + 弹层宿主 + 移除 DrawerHost | 斗鱼页面人工走查：注入点、弹层几何、未登录提示、全屏/外部点击收起；契约测试（M11 输入/输出/收起事件） |
 
@@ -816,8 +876,8 @@ dev 流程（重载扩展 / service worker 失效）后，老 content script 仍
 | M3 一期达标 | P7 通过：性能/兼容/登录态复测（Q1/Q5）全部裁决，开放问题定版 |
 | M4 二期抖音 | 新增 DouyinAdapter，登录态检测联调，弹幕库零改动 [Data-backed: PRD G5] |
 
-> 里程碑验收以 PRD 第 7 章非功能要求与 FR-01~06 验收口径为准；任一 [Unverified — requires human review] 项未复核前，对应里程碑不得标记完成。
+> 里程碑验收以 PRD 第 7 章非功能要求与 FR-01~07 验收口径为准；任一 [Unverified — requires human review] 项未复核前，对应里程碑不得标记完成。
 
 ---
 
-*文档完 · V0.2 技术方案评审修订稿*
+*文档完 · V0.4 技术方案去重优化修订稿*

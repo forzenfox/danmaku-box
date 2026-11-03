@@ -1,4 +1,4 @@
-// M2 弹幕库核心 DanmakuStore（技术方案 V0.2 4.M2 / P2 里程碑）。
+// M2 弹幕库核心 DanmakuStore（技术方案 V0.4 4.M2 / P2 里程碑）。
 // 职责：维护弹幕、分组、查询三类核心领域操作。
 // 边界：不接触 DOM；不负责备份文件 I/O；不触发回填。
 // 部署于 service worker，作为存储唯一入口；UI 与页面侧只经消息调用。
@@ -15,6 +15,7 @@ import {
 import type { Danmaku, Group } from '../shared/types.ts';
 import type { StorageService } from './storage.service.ts';
 import { mergeLibrary } from './backup.ts';
+import { normalizeContent, planDedupe, type DedupeReport } from './dedupe.ts';
 import { StoreError } from './store-error.ts';
 
 export type SortKey = 'latest' | 'oldest' | 'length';
@@ -58,7 +59,7 @@ export interface DanmakuStore {
   getGroupsWithCounts(): Promise<Array<Group & { count: number }>>;
   /** 导出原始库数据（备份用） */
   exportLibrary(): Promise<{ groups: Group[]; danmaku: Danmaku[] }>;
-  /** 导入：merge=同名分组合并+组内去重；overwrite=整体替换（默认分组始终保障存在） */
+  /** 导入：merge=同名分组合并+全库内容去重；overwrite=整体替换（默认分组始终保障存在） */
   importLibrary(
     data: { groups: Group[]; danmaku: Danmaku[] },
     strategy: 'merge' | 'overwrite',
@@ -75,17 +76,14 @@ export interface DanmakuStore {
   updateDanmaku(id: string, content: string): Promise<void>;
   deleteDanmaku(ids: string[]): Promise<{ deleted: number }>;
   moveDanmaku(ids: string[], targetGroupId: string): Promise<{ moved: number }>;
-  /** 批量导入收藏弹幕：组内去重、空/超长计 invalid 不落库；一次落盘（不回写分组 last_used_at） */
+  /** 全库去重：dryRun=true 仅返回报告不落盘；默认执行并一次落盘 */
+  dedupeLibrary(options?: { dryRun?: boolean }): Promise<DedupeReport>;
+  /** 批量导入收藏弹幕：全库内容去重、空/超长计 invalid 不落库；一次落盘（不回写分组 last_used_at） */
   importFavoriteDanmaku(
     entries: Array<{ content: string }>,
     targetGroupId: string,
   ): Promise<{ added: number; skipped: number; invalid: number }>;
   getMenuContext(content: string): Promise<MenuGroup[]>;
-}
-
-/** 去重归一化：仅去首尾空白（全角/半角不折叠，技术方案 7.4.1） */
-function normalize(s: string): string {
-  return s.trim();
 }
 
 /** 全局唯一 id：时间戳 + 随机后缀（技术方案 6.2） */
@@ -117,8 +115,8 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
 
   /** 去重判定：内容 + 分组双重维度（技术方案 7.4.1） */
   function findDuplicate(list: Danmaku[], content: string, groupId: string): Danmaku | undefined {
-    const n = normalize(content);
-    return list.find((item) => item.group_id === groupId && normalize(item.content) === n);
+    const n = normalizeContent(content);
+    return list.find((item) => item.group_id === groupId && normalizeContent(item.content) === n);
   }
 
   // 初始化（幂等）：确保内置默认分组存在且 builtin 标记正确。
@@ -288,9 +286,8 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
       // 与 createDanmaku 抛错语义不同：批量导入对空/超长计 invalid 继续，不中断整批。
       await requireGroupExists(targetGroupId);
       const list = await loadDanmaku();
-      const seen = new Set(
-        list.filter((d) => d.group_id === targetGroupId).map((d) => normalize(d.content)),
-      );
+      // 全库内容去重（忽略 group_id）：目标分组或其它任一分组已有相同内容均跳过
+      const seen = new Set(list.map((d) => normalizeContent(d.content)));
       let added = 0;
       let skipped = 0;
       let invalid = 0;
@@ -301,11 +298,11 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
           invalid += 1;
           continue;
         }
-        if (seen.has(normalize(content))) {
+        if (seen.has(normalizeContent(content))) {
           skipped += 1;
           continue;
         }
-        seen.add(normalize(content));
+        seen.add(normalizeContent(content));
         batch.push({
           id: newId('d'),
           content,
@@ -318,6 +315,23 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
       }
       if (batch.length > 0) await saveDanmaku([...list, ...batch]);
       return { added, skipped, invalid };
+    },
+
+    async dedupeLibrary(options: { dryRun?: boolean } = {}): Promise<DedupeReport> {
+      const list = await loadDanmaku();
+      const plan = planDedupe(list);
+      const report: DedupeReport = {
+        scanned: plan.scanned,
+        removed: plan.removed,
+        withinGroupRemoved: plan.withinGroupRemoved,
+        defaultGroupRemoved: plan.defaultGroupRemoved,
+        keptCrossGroupContents: plan.keptCrossGroupContents,
+      };
+      if (!options.dryRun && plan.deleteIds.length > 0) {
+        const removeIds = new Set(plan.deleteIds);
+        await saveDanmaku(list.filter((item) => !removeIds.has(item.id)));
+      }
+      return report;
     },
 
     async createDanmaku(input: {
@@ -408,7 +422,7 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
         await saveDanmaku(data.danmaku.map((d) => ({ ...d })));
         return { added: data.danmaku.length, skipped: 0, mergedGroups: 0 };
       }
-      // 合并：同名分组合并 + 组内去重 + 孤儿弹幕归入默认收藏（技术方案 7.4.2）
+      // 合并：同名分组合并 + 全库内容去重 + 孤儿弹幕归入默认收藏（技术方案 V0.4 7.4.2）
       const [currentGroups, currentDanmaku] = await Promise.all([loadGroups(), loadDanmaku()]);
       const result = mergeLibrary(
         { groups: currentGroups, danmaku: currentDanmaku },
@@ -433,7 +447,7 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
         });
       const builtin = groups.find((g) => g.builtin);
       if (!builtin) throw new StoreError(ERROR_CODES.READ_FAILED, '内置分组缺失');
-      const n = normalize(content);
+      const n = normalizeContent(content);
       const withFlag = (g: Group): MenuGroup => ({
         id: g.id,
         name: g.name,
@@ -441,7 +455,7 @@ export async function createDanmakuStore(storage: StorageService): Promise<Danma
         last_used_at: g.last_used_at,
         builtin: g.builtin,
         hasThisContent: list.some(
-          (item) => item.group_id === g.id && normalize(item.content) === n,
+          (item) => item.group_id === g.id && normalizeContent(item.content) === n,
         ),
       });
       return [...custom.map(withFlag), withFlag(builtin)];

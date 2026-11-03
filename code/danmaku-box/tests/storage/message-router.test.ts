@@ -7,7 +7,13 @@ import { createSettingsService } from '../../src/background/settings.service.ts'
 import { createStorageService } from '../../src/background/storage.service.ts';
 import { MemoryArea } from '../helpers/memory-area.ts';
 import { createDiagnostics } from '../../src/background/diagnostics.ts';
-import { DEFAULT_GROUP_ID, ERROR_CODES, MESSAGES } from '../../src/shared/constants.ts';
+import {
+  DEFAULT_GROUP_ID,
+  ERROR_CODES,
+  MESSAGES,
+  STORAGE_KEYS,
+} from '../../src/shared/constants.ts';
+import type { Danmaku } from '../../src/shared/types.ts';
 
 // 消息路由契约测试（技术方案 V0.2 5.2 消息协议 + P2.5 面板契约测试）：
 // 统一信封、错误映射、写操作串行队列、未知消息处理。
@@ -422,6 +428,55 @@ describe('EXPORT_BACKUP / IMPORT_BACKUP / GET_DIAG', () => {
     assert.equal(r?.error?.code, ERROR_CODES.BAD_FORMAT);
     // 原库完整无损（迁移失败不落盘）
     assert.equal((await store.listDanmaku()).total, 1);
+  });
+
+  it('DEDUPE_LIBRARY dryRun 返回报告且不落库，apply 后按规则删除', async () => {
+    const { area, router, store } = await makeRouter();
+    const list: Danmaku[] = [
+      {
+        id: 'a',
+        content: 'X',
+        group_id: DEFAULT_GROUP_ID,
+        platform: 'douyu',
+        room: '1',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'b',
+        content: 'X',
+        group_id: DEFAULT_GROUP_ID,
+        platform: 'douyu',
+        room: '1',
+        created_at: '2026-01-02T00:00:00Z',
+      },
+      {
+        id: 'c',
+        content: 'X',
+        group_id: 'gA',
+        platform: 'manual',
+        room: '',
+        created_at: '2026-01-03T00:00:00Z',
+      },
+    ];
+    area.store.set(STORAGE_KEYS.danmaku, list);
+
+    const preview = await router.handleMessage(msg(MESSAGES.DEDUPE_LIBRARY, { dryRun: true }));
+    assert.equal(preview?.ok, true);
+    assert.deepEqual(preview?.data, {
+      scanned: 3,
+      removed: 2,
+      withinGroupRemoved: 1,
+      defaultGroupRemoved: 1,
+      keptCrossGroupContents: 0,
+    });
+    assert.equal((await store.listDanmaku()).total, 3);
+
+    const applied = await router.handleMessage(msg(MESSAGES.DEDUPE_LIBRARY, { dryRun: false }));
+    assert.equal(applied?.ok, true);
+    assert.equal((applied?.data as { removed: number }).removed, 2);
+    const after = await store.listDanmaku();
+    assert.equal(after.total, 1);
+    assert.equal(after.items[0]?.id, 'c');
   });
 
   it('GET_DIAG 返回诊断快照', async () => {
