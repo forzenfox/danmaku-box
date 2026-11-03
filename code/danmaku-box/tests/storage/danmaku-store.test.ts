@@ -571,6 +571,23 @@ describe('DanmakuStore.importFavoriteDanmaku', () => {
     assert.deepEqual({ added: r.added, skipped: r.skipped }, { added: 1, skipped: 1 });
   });
 
+  it('全库内容去重：其它分组已有相同内容时跳过', async () => {
+    const { store, groupId } = await setup();
+    await store.createDanmaku({ content: 'x', groupId: DEFAULT_GROUP_ID });
+    const r = await store.importFavoriteDanmaku([{ content: 'x' }, { content: 'y' }], groupId);
+    assert.deepEqual({ added: r.added, skipped: r.skipped }, { added: 1, skipped: 1 });
+    assert.equal((await store.listDanmaku({ groupId })).total, 1);
+  });
+
+  it('导入批次内部重复按内容去重（trim 后相同）', async () => {
+    const { store, groupId } = await setup();
+    const r = await store.importFavoriteDanmaku(
+      [{ content: 'x' }, { content: ' x ' }, { content: 'y' }],
+      groupId,
+    );
+    assert.deepEqual({ added: r.added, skipped: r.skipped }, { added: 2, skipped: 1 });
+  });
+
   it('空内容与超长内容计 invalid（不落库）', async () => {
     const { store, groupId } = await setup();
     const r = await store.importFavoriteDanmaku(

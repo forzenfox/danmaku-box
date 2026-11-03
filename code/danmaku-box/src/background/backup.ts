@@ -1,9 +1,10 @@
-// M8 备份服务（技术方案 V0.2 4.M8 / 5.3 Schema / 7.4.2 合并算法 / P6 里程碑）。
+// M8 备份服务（技术方案 V0.4 4.M8 / 5.3 Schema / 7.4.2 合并算法 / P6 里程碑）。
 // 职责：备份文件的解析、版本迁移与合并算法（纯函数，便于 TDD）。
 // 边界：不负责文件下载 UI；不执行破坏性操作前的确认逻辑（由调用方保证）。
 
 import { DEFAULT_GROUP_ID, ERROR_CODES, SCHEMA_VERSION } from '../shared/constants.ts';
 import type { Danmaku, Group } from '../shared/types.ts';
+import { normalizeContent } from './dedupe.ts';
 import { StoreError } from './store-error.ts';
 
 /** 备份文件结构（技术方案 5.3；settings 为导出时的数组形态） */
@@ -24,11 +25,6 @@ export interface MergeResult extends LibraryData {
   added: number;
   skipped: number;
   mergedGroups: number;
-}
-
-/** 去重归一化（与 DanmakuStore 一致：仅去首尾空白） */
-function normalize(s: string): string {
-  return s.trim();
 }
 
 /** 解析并校验备份文件：version 必须受支持，danmaku/groups 必须为数组 */
@@ -60,21 +56,18 @@ export function parseBackup(raw: unknown): BackupFile {
 }
 
 /**
- * 同名分组合并算法（技术方案 7.4.2）：
+ * 导入合并算法（技术方案 V0.4 7.4.2）：
  * - 同名分组按名称合并为一个分组，备份中该组的弹幕归入合并后的分组；
- * - 组内按内容去重（跳过重复）；
+ * - 去重为全库内容维度（忽略 group_id）：当前库任一分组已有相同内容，
+ *   或本批次内部已有相同内容，均跳过；
  * - 引用未知分组的弹幕归入「默认收藏」（5.3 字段校验规则）；
  * - 新分组按 order 追加到现有分组之后。
  */
 export function mergeLibrary(current: LibraryData, incoming: LibraryData): MergeResult {
   const groups: Group[] = current.groups.map((g) => ({ ...g }));
   const danmaku: Danmaku[] = current.danmaku.map((d) => ({ ...d }));
-  // 分组内弹幕按组建立内容索引，用于去重
-  const contentByGroup = new Map<string, Set<string>>();
-  for (const d of danmaku) {
-    if (!contentByGroup.has(d.group_id)) contentByGroup.set(d.group_id, new Set());
-    contentByGroup.get(d.group_id)?.add(normalize(d.content));
-  }
+  // 全库内容索引（忽略分组），用于合并导入去重
+  const seenContents = new Set(danmaku.map((d) => normalizeContent(d.content)));
   // 名称 → 目标分组 id（现有组按名称建索引；默认收藏按名称自然命中）
   const nameIndex = new Map<string, string>();
   for (const g of groups) if (!nameIndex.has(g.name)) nameIndex.set(g.name, g.id);
@@ -95,18 +88,16 @@ export function mergeLibrary(current: LibraryData, incoming: LibraryData): Merge
       const cloned: Group = { ...g, order: ++nextOrder };
       groups.push(cloned);
       nameIndex.set(cloned.name, cloned.id);
-      contentByGroup.set(cloned.id, new Set());
     }
 
     for (const d of incoming.danmaku) {
       if (d.group_id !== g.id) continue;
-      const n = normalize(d.content);
-      const seen = contentByGroup.get(targetId);
-      if (seen && seen.has(n)) {
+      const n = normalizeContent(d.content);
+      if (seenContents.has(n)) {
         skipped += 1;
         continue;
       }
-      seen?.add(n);
+      seenContents.add(n);
       danmaku.push({ ...d, group_id: targetId });
       added += 1;
     }
@@ -116,13 +107,12 @@ export function mergeLibrary(current: LibraryData, incoming: LibraryData): Merge
   const knownIds = new Set(groups.map((g) => g.id));
   for (const d of incoming.danmaku) {
     if (!knownIds.has(d.group_id)) {
-      const n = normalize(d.content);
-      const seen = contentByGroup.get(DEFAULT_GROUP_ID);
-      if (seen && seen.has(n)) {
+      const n = normalizeContent(d.content);
+      if (seenContents.has(n)) {
         skipped += 1;
         continue;
       }
-      seen?.add(n);
+      seenContents.add(n);
       danmaku.push({ ...d, group_id: DEFAULT_GROUP_ID });
       added += 1;
     }

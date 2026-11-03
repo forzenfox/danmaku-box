@@ -1,4 +1,4 @@
-// M4 面板 UI PanelUI（技术方案 V0.2 4.M4 / P2.5 里程碑，原型设计 V0.2 3.2/3.3）。
+// M4 面板 UI PanelUI（技术方案 V0.4 4.M4 / P2.5 里程碑，原型设计 V0.4 3.2/3.3）。
 // 职责：渲染弹幕库面板的可视界面；全部数据操作经消息协议走 service worker。
 // 边界：不含业务规则；不读写站点 DOM。
 
@@ -37,6 +37,14 @@ interface ListData {
   items: Danmaku[];
   total: number;
   hasMore: boolean;
+}
+
+interface DedupeReport {
+  scanned: number;
+  removed: number;
+  withinGroupRemoved: number;
+  defaultGroupRemoved: number;
+  keptCrossGroupContents: number;
 }
 
 type SortKey = 'latest' | 'oldest' | 'length';
@@ -90,7 +98,13 @@ const modalRoot = must('modal-root');
 const toastWrap = must('toast-wrap');
 
 // 批量模式下隐藏的常规头部操作（与批量操作组互斥）
-const NORMAL_HEADER_IDS = ['btn-batch', 'btn-import', 'btn-export', 'btn-new-danmaku'] as const;
+const NORMAL_HEADER_IDS = [
+  'btn-batch',
+  'btn-import',
+  'btn-export',
+  'btn-dedupe',
+  'btn-new-danmaku',
+] as const;
 
 // ── toast（面板顶部右对齐，2 秒消失）─────────
 function toast(text: string, type: 'success' | 'warn' = 'success') {
@@ -830,6 +844,64 @@ async function moveDanmaku(ids: string[]): Promise<void> {
   }
 }
 
+// 全库去重：预演 → 确认 → 自动临时备份 → 执行 → 汇总（PRD FR-03）
+let dedupeRunning = false;
+
+async function runDedupe(): Promise<void> {
+  if (dedupeRunning) return;
+  dedupeRunning = true;
+  try {
+    const preview = await sendMessage<DedupeReport>(MESSAGES.DEDUPE_LIBRARY, { dryRun: true });
+    if (!preview.ok || !preview.data) {
+      toast(errorText(preview.error?.code, '去重失败，请重试'), 'warn');
+      return;
+    }
+    const report = preview.data;
+    if (report.removed === 0) {
+      toast(
+        report.keptCrossGroupContents > 0
+          ? `未发现可去重的弹幕，${report.keptCrossGroupContents} 组跨分组重复按规则保留`
+          : '未发现重复弹幕',
+      );
+      return;
+    }
+    const keptHint =
+      report.keptCrossGroupContents > 0
+        ? `另有 ${report.keptCrossGroupContents} 组非默认分组之间的重复将按规则保留。`
+        : '';
+    const ok = await confirmModal({
+      title: '全库去重？',
+      body:
+        `将扫描全库 ${report.scanned} 条弹幕，预计删除 ${report.removed} 条重复弹幕` +
+        `（组内重复 ${report.withinGroupRemoved} 条、默认收藏跨组重复 ${report.defaultGroupRemoved} 条）。` +
+        `同组重复保留 1 条；跨组重复优先删除默认收藏。${keptHint}` +
+        '执行前将自动下载当前库临时备份。',
+      confirmText: '执行去重',
+    });
+    if (!ok) return;
+
+    // 先备份再删除，保证破坏性操作可挽回（PRD 第 7 章）
+    const backedUp = await exportBackupToFile('去重前临时备份');
+    if (!backedUp) return;
+
+    const result = await sendMessage<DedupeReport>(MESSAGES.DEDUPE_LIBRARY, { dryRun: false });
+    if (!result.ok || !result.data) {
+      toast(errorText(result.error?.code, '去重失败，请重试'), 'warn');
+      return;
+    }
+    const applied = result.data;
+    let message = `已去除 ${applied.removed} 条重复弹幕`;
+    if (applied.keptCrossGroupContents > 0) {
+      message += `，${applied.keptCrossGroupContents} 组跨分组重复按规则保留`;
+    }
+    toast(message);
+    await loadGroups();
+    void renderUsage();
+  } finally {
+    dedupeRunning = false;
+  }
+}
+
 async function fillDanmaku(item: Danmaku): Promise<void> {
   if (item.content === '') {
     toast('该弹幕无文本内容，无法回填', 'warn');
@@ -1136,6 +1208,8 @@ must<HTMLButtonElement>('btn-batch-delete').addEventListener('click', async () =
   if (ok) await deleteDanmaku(ids);
 });
 
+must<HTMLButtonElement>('btn-dedupe').addEventListener('click', () => void runDedupe());
+
 must<HTMLButtonElement>('btn-batch-move').addEventListener('click', async () => {
   const ids = [...state.checked];
   if (ids.length === 0) {
@@ -1174,7 +1248,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── 启动 ─────────────────────────────────────
-// 数据刷新：保留分组/关键词/排序/页码状态，仅重拉数据（技术方案 V0.2 5.2）。
+// 数据刷新：保留分组/关键词/排序/页码状态，仅重拉数据（技术方案 V0.4 5.2）。
 async function refreshPanel(): Promise<void> {
   await loadGroups();
   await loadList();
