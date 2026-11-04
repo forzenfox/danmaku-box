@@ -1,7 +1,7 @@
 {
   "name": "danmaku-box",
   "displayName": "弹幕收藏夹 DanmakuBox",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "直播弹幕收藏管理插件：右键收藏、分组管理、一键回填，数据完全本地（Chrome MV3）",

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "弹幕收藏夹 DanmakuBox",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "直播弹幕右键收藏、分组管理、一键回填。数据完全本地存储，零上传、零埋点。",
   "minimum_chrome_version": "114",
   "icons": {
